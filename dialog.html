@@ -505,7 +505,42 @@
       }
     }
 
-    // Fetch root mail folders
+    // Helper: fetch one root tree by its well-known folder name
+    async function collectRoot(wellKnownName, labelPrefix) {
+      // First resolve the root folder's real ID
+      let rootId, rootDisplayName;
+      try {
+        const rootData = await fetchPage(
+          `${GRAPH_BASE}/me/mailFolders/${wellKnownName}?$select=id,displayName,childFolderCount`
+        );
+        rootId          = rootData.id;
+        rootDisplayName = labelPrefix || rootData.displayName;
+        // Add the root itself only if it's not a generic system name
+        // (e.g. skip bare "Archive" root — its children are what matter)
+      } catch(e) {
+        // Well-known folder doesn't exist for this account — skip silently
+        return;
+      }
+
+      // Fetch its direct children as top-level entries, then recurse
+      let url = `${GRAPH_BASE}/me/mailFolders/${rootId}/childFolders?$top=100&$select=id,displayName,childFolderCount`;
+      while (url) {
+        const page = await fetchPage(url);
+        for (const f of (page.value || [])) {
+          if (SKIP.has(f.displayName)) continue;
+          const path = rootDisplayName
+            ? `${rootDisplayName} / ${f.displayName}`
+            : f.displayName;
+          results.push({ id: f.id, name: f.displayName, path });
+          if (f.childFolderCount > 0) {
+            await collectChildren(f.id, path);
+          }
+        }
+        url = page['@odata.nextLink'] || null;
+      }
+    }
+
+    // ── Fetch regular mail folder root ──
     let url = `${GRAPH_BASE}/me/mailFolders?$top=100&$select=id,displayName,childFolderCount`;
     while (url) {
       const page = await fetchPage(url);
@@ -519,8 +554,21 @@
       url = page['@odata.nextLink'] || null;
     }
 
+    // ── Fetch Archive root (separate root in Exchange, missed by mailFolders) ──
+    await collectRoot('archiveMsgFolderRoot', 'Archive');
+
+    // ── Fetch In-Place Archive if it exists (online archive mailbox) ──
+    await collectRoot('archiveRoot', 'Online Archive');
+
     if (!results.length) throw new Error('No folders returned');
-    return results;
+
+    // Deduplicate by folder ID (in case Archive appears in both trees)
+    const seen = new Set();
+    return results.filter(f => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
   }
 
   // ── EWS fallback ──────────────────────────────────────────────────────────
@@ -536,6 +584,7 @@
       <m:FolderShape><t:BaseShape>AllProperties</t:BaseShape></m:FolderShape>
       <m:ParentFolderIds>
         <t:DistinguishedFolderId Id="msgfolderroot"/>
+        <t:DistinguishedFolderId Id="archivemsgfolderroot"/>
       </m:ParentFolderIds>
     </m:FindFolder>
   </soap:Body>
