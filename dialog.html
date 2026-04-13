@@ -371,13 +371,15 @@
 
   <script>
   // ── Constants ──────────────────────────────────────────────────────────────
-  const STORAGE_KEY_APIKEY   = 'sf_apikey';
-  const STORAGE_KEY_HISTORY  = 'sf_history'; // { senderEmail: { folderPath: count } }
+  const STORAGE_KEY_APIKEY  = 'sf_apikey';
+  const STORAGE_KEY_HISTORY = 'sf_history';
   const MODEL = 'claude-sonnet-4-20250514';
+  const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let allFolders = [];
+  let allFolders     = [];
   let currentMessage = null;
+  let graphToken     = null;
 
   // ── Init ───────────────────────────────────────────────────────────────────
   Office.onReady(info => {
@@ -387,11 +389,10 @@
         showMain();
         loadMessageAndSuggest();
       }
-      // else setupPanel is already visible
     }
   });
 
-  // ── API Key management ────────────────────────────────────────────────────
+  // ── API Key management ─────────────────────────────────────────────────────
   function saveApiKey() {
     const val = document.getElementById('apiKeyInput').value.trim();
     if (!val.startsWith('sk-ant-')) {
@@ -408,72 +409,131 @@
     document.getElementById('mainUI').classList.remove('hidden');
   }
 
-  // ── Load message metadata from Office.js ─────────────────────────────────
+  // ── Step 1: Get Graph token ────────────────────────────────────────────────
   function loadMessageAndSuggest() {
+    setStatus('loading', 'Authenticating…');
+
+    Office.context.mailbox.getCallbackTokenAsync({ isRest: true }, tokenResult => {
+      if (tokenResult.status !== Office.AsyncResultStatus.Succeeded) {
+        setStatus('error', 'Auth failed: ' + (tokenResult.error?.message || 'no token'));
+        // Still try to read message and show manual search
+        readMessageMeta(null);
+        return;
+      }
+      graphToken = tokenResult.value;
+      readMessageMeta(graphToken);
+    });
+  }
+
+  // ── Step 2: Read message metadata ─────────────────────────────────────────
+  function readMessageMeta(token) {
     const item = Office.context.mailbox.item;
     if (!item) { setStatus('warn', 'No message selected.'); return; }
 
-    // Get sender
-    const senderEmail = item.from ? item.from.emailAddress : 'unknown';
-    const senderName  = item.from ? (item.from.displayName || senderEmail) : 'Unknown';
+    const senderEmail = item.from?.emailAddress || 'unknown';
+    const senderName  = item.from?.displayName  || senderEmail;
     const subject     = item.subject || '(no subject)';
 
     currentMessage = { senderEmail, senderName, subject };
-
-    // Update preview card
     document.getElementById('msgFrom').textContent    = `${senderName} <${senderEmail}>`;
     document.getElementById('msgSubject').textContent = subject;
 
-    // Get body preview
-    item.body.getAsync(Office.CoercionType.Text, { asyncContext: 'body' }, result => {
+    item.body.getAsync(Office.CoercionType.Text, {}, result => {
       if (result.status === Office.AsyncResultStatus.Succeeded) {
-        const preview = result.value.trim().substring(0, 120).replace(/\s+/g, ' ');
+        const preview = result.value.trim().substring(0, 200).replace(/\s+/g, ' ');
         document.getElementById('msgPreview').textContent = preview || '';
         currentMessage.bodyPreview = preview;
       }
-      // Load folders then call AI
-      loadFolders();
+      loadFolders(token);
     });
   }
 
-  // ── Load all Outlook folders ──────────────────────────────────────────────
-  function loadFolders() {
+  // ── Step 3: Load folders via Graph (with EWS fallback) ────────────────────
+  async function loadFolders(token) {
     setStatus('loading', 'Loading folders…');
-    const mailbox = Office.context.mailbox;
 
-    // Office.js doesn't expose full folder tree directly; use EWS or REST
-    // We'll use the newer Office JS mailbox.folders if available, else EWS fallback
-    if (mailbox.item && typeof Office.context.mailbox.getFolderAsync === 'function') {
-      // Future API — use EWS for now
+    if (token) {
+      try {
+        const folders = await fetchFoldersGraph(token);
+        allFolders = folders;
+        setupSearch(folders);
+        callAIForSuggestions();
+        return;
+      } catch(e) {
+        setStatus('loading', 'Graph failed, trying EWS…');
+        console.warn('Graph folder fetch failed:', e.message);
+      }
     }
 
-    // Use EWS to get all folders
-    getFoldersViaEWS(folders => {
-      allFolders = folders;
-      setupSearch(folders);
-      if (folders.length === 0) {
-        setStatus('warn', 'No folders found. Check permissions.');
-        return;
-      }
-      callAIForSuggestions();
-    });
+    // EWS fallback
+    tryEWSFolders();
   }
 
-  // ── EWS: Fetch folder list ─────────────────────────────────────────────────
-  function getFoldersViaEWS(callback) {
-    const soapEnv = `<?xml version="1.0" encoding="utf-8"?>
+  // ── Graph: fetch all mail folders recursively ──────────────────────────────
+  async function fetchFoldersGraph(token) {
+    const SKIP = new Set(['Sync Issues','Conflicts','Server Failures',
+      'Local Failures','Conversation History','Quick Step Settings',
+      'Recoverable Items','Purges','Versions','Audits']);
+
+    async function fetchPage(url) {
+      const r = await fetch(url, {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new Error(`Graph ${r.status}: ${txt}`);
+      }
+      return r.json();
+    }
+
+    // Get top-level folders, then child folders for each
+    const results = [];
+
+    async function collectChildren(parentId, parentName) {
+      let url = `${GRAPH_BASE}/me/mailFolders/${parentId}/childFolders?$top=100&$select=id,displayName,childFolderCount`;
+      while (url) {
+        const page = await fetchPage(url);
+        for (const f of (page.value || [])) {
+          if (SKIP.has(f.displayName)) continue;
+          const path = parentName ? `${parentName} / ${f.displayName}` : f.displayName;
+          results.push({ id: f.id, name: f.displayName, path });
+          if (f.childFolderCount > 0) {
+            await collectChildren(f.id, path);
+          }
+        }
+        url = page['@odata.nextLink'] || null;
+      }
+    }
+
+    // Fetch root mail folders
+    let url = `${GRAPH_BASE}/me/mailFolders?$top=100&$select=id,displayName,childFolderCount`;
+    while (url) {
+      const page = await fetchPage(url);
+      for (const f of (page.value || [])) {
+        if (SKIP.has(f.displayName)) continue;
+        results.push({ id: f.id, name: f.displayName, path: f.displayName });
+        if (f.childFolderCount > 0) {
+          await collectChildren(f.id, f.displayName);
+        }
+      }
+      url = page['@odata.nextLink'] || null;
+    }
+
+    if (!results.length) throw new Error('No folders returned');
+    return results;
+  }
+
+  // ── EWS fallback ──────────────────────────────────────────────────────────
+  function tryEWSFolders() {
+    const soap = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header>
-    <t:RequestServerVersion Version="Exchange2013"/>
-  </soap:Header>
+  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
   <soap:Body>
     <m:FindFolder Traversal="Deep">
-      <m:FolderShape>
-        <t:BaseShape>AllProperties</t:BaseShape>
-      </m:FolderShape>
+      <m:FolderShape><t:BaseShape>AllProperties</t:BaseShape></m:FolderShape>
       <m:ParentFolderIds>
         <t:DistinguishedFolderId Id="msgfolderroot"/>
       </m:ParentFolderIds>
@@ -481,76 +541,99 @@
   </soap:Body>
 </soap:Envelope>`;
 
-    Office.context.mailbox.makeEwsRequestAsync(soapEnv, result => {
-      if (result.status !== Office.AsyncResultStatus.Succeeded) {
-        // EWS not available — build a minimal fallback list from known folders
-        const fallback = [
-          { id: 'inbox',           name: 'Inbox',        path: 'Inbox' },
-          { id: 'sentitems',       name: 'Sent Items',   path: 'Sent Items' },
-          { id: 'deleteditems',    name: 'Deleted Items',path: 'Deleted Items' },
-          { id: 'archive',         name: 'Archive',      path: 'Archive' },
-          { id: 'junkemail',       name: 'Junk Email',   path: 'Junk Email' },
-        ];
-        callback(fallback);
-        return;
-      }
+    // Timeout EWS after 8 seconds
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) { done = true; useFallbackFolders('EWS timed out'); }
+    }, 8000);
 
-      const parser = new DOMParser();
-      const xml = parser.parseFromString(result.value, 'text/xml');
-      const folderNodes = xml.getElementsByTagNameNS(
-        'http://schemas.microsoft.com/exchange/services/2006/types', 'Folder');
+    try {
+      Office.context.mailbox.makeEwsRequestAsync(soap, result => {
+        if (done) return;
+        clearTimeout(timer);
+        done = true;
 
-      const folders = [];
-      for (let f of folderNodes) {
-        const idEl   = f.getElementsByTagNameNS('http://schemas.microsoft.com/exchange/services/2006/types', 'FolderId')[0];
-        const nameEl = f.getElementsByTagNameNS('http://schemas.microsoft.com/exchange/services/2006/types', 'DisplayName')[0];
-        if (!idEl || !nameEl) continue;
-        const name = nameEl.textContent.trim();
-        // Skip system folders
-        if (['Sync Issues','Conflicts','Server Failures','Local Failures',
-             'Conversation History','Quick Step Settings','People I Know'].includes(name)) continue;
+        if (result.status !== Office.AsyncResultStatus.Succeeded) {
+          useFallbackFolders(result.error?.message || 'EWS unavailable');
+          return;
+        }
 
-        folders.push({
-          id:   idEl.getAttribute('Id'),
-          name: name,
-          path: name  // EWS Deep doesn't give path; name is sufficient for display
-        });
-      }
-      callback(folders);
-    });
+        try {
+          const parser = new DOMParser();
+          const xml    = parser.parseFromString(result.value, 'text/xml');
+          const ns     = 'http://schemas.microsoft.com/exchange/services/2006/types';
+          const nodes  = xml.getElementsByTagNameNS(ns, 'Folder');
+          const SKIP   = new Set(['Sync Issues','Conflicts','Server Failures',
+            'Local Failures','Conversation History','Quick Step Settings']);
+
+          const folders = [];
+          for (const f of nodes) {
+            const idEl   = f.getElementsByTagNameNS(ns, 'FolderId')[0];
+            const nameEl = f.getElementsByTagNameNS(ns, 'DisplayName')[0];
+            if (!idEl || !nameEl) continue;
+            const name = nameEl.textContent.trim();
+            if (SKIP.has(name)) continue;
+            folders.push({ id: idEl.getAttribute('Id'), name, path: name });
+          }
+
+          if (!folders.length) { useFallbackFolders('EWS returned 0 folders'); return; }
+
+          allFolders = folders;
+          setupSearch(folders);
+          callAIForSuggestions();
+        } catch(parseErr) {
+          useFallbackFolders('EWS parse error: ' + parseErr.message);
+        }
+      });
+    } catch(e) {
+      clearTimeout(timer);
+      useFallbackFolders('EWS exception: ' + e.message);
+    }
   }
 
-  // ── Call Claude API for folder suggestions ────────────────────────────────
+  // ── Static fallback folder list ────────────────────────────────────────────
+  function useFallbackFolders(reason) {
+    console.warn('Using fallback folders. Reason:', reason);
+    const fallback = [
+      { id: 'inbox',        name: 'Inbox',        path: 'Inbox' },
+      { id: 'archive',      name: 'Archive',       path: 'Archive' },
+      { id: 'sentitems',    name: 'Sent Items',    path: 'Sent Items' },
+      { id: 'deleteditems', name: 'Deleted Items', path: 'Deleted Items' },
+      { id: 'junkemail',    name: 'Junk Email',    path: 'Junk Email' },
+    ];
+    allFolders = fallback;
+    setStatus('warn', `Limited folders (${reason}). Add folders manually below.`);
+    setupSearch(fallback);
+    // Still try AI with what we have
+    callAIForSuggestions();
+  }
+
+  // ── Call Claude API for folder suggestions ─────────────────────────────────
   async function callAIForSuggestions() {
     setStatus('loading', 'Asking AI for suggestions…');
     const apiKey = localStorage.getItem(STORAGE_KEY_APIKEY);
     if (!apiKey) return;
 
-    const history = getHistory();
-    const senderHistory = history[currentMessage.senderEmail] || {};
-    const topPrior = Object.entries(senderHistory)
-      .sort((a,b) => b[1]-a[1])
-      .slice(0,5)
-      .map(([path, count]) => `"${path}" (used ${count}x)`)
-      .join(', ') || 'none';
+    const history      = getHistory();
+    const senderHist   = history[currentMessage.senderEmail] || {};
+    const topPrior     = Object.entries(senderHist)
+      .sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([p, c]) => `"${p}" (×${c})`).join(', ') || 'none';
+    const folderList   = allFolders.map(f => f.name).slice(0, 100).join(', ');
 
-    const folderList = allFolders.map(f => f.name).slice(0,80).join(', ');
+    const prompt = `You are an email filing assistant. Suggest the best Outlook folders to file this email.
 
-    const prompt = `You are an email filing assistant. Your job is to suggest the best Outlook folders to file an email into.
-
-Email details:
+Email:
 - From: ${currentMessage.senderName} <${currentMessage.senderEmail}>
 - Subject: ${currentMessage.subject}
 - Body preview: ${currentMessage.bodyPreview || '(not available)'}
 
 Available folders: ${folderList}
+Filing history for this sender: ${topPrior}
 
-Previous filing history for this sender: ${topPrior}
-
-Return ONLY a JSON array of up to 4 folder name suggestions, ranked best-first, from the available folders list. Example:
-["Projects", "Finance", "Team Updates", "Inbox"]
-
-No explanation, no markdown, just the JSON array.`;
+Return ONLY a JSON array of up to 4 folder names (from the available list), best match first.
+Example: ["Projects","Finance","Inbox"]
+No explanation, no markdown fences.`;
 
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -562,74 +645,65 @@ No explanation, no markdown, just the JSON array.`;
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model:      MODEL,
-          max_tokens: 200,
+          model: MODEL, max_tokens: 200,
           messages: [{ role: 'user', content: prompt }]
         })
       });
 
       if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error?.message || resp.statusText);
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${resp.status}`);
       }
 
       const data  = await resp.json();
-      const text  = data.content[0].text.trim();
-      const clean = text.replace(/```json|```/g, '').trim();
-      const names = JSON.parse(clean);
+      const text  = data.content[0].text.trim().replace(/```json|```/g, '').trim();
+      const names = JSON.parse(text);
 
-      // Map names to folder objects
       const suggestions = names
-        .map(name => allFolders.find(f => f.name.toLowerCase() === name.toLowerCase()))
-        .filter(Boolean)
-        .slice(0, 4);
+        .map(n => allFolders.find(f => f.name.toLowerCase() === n.toLowerCase()))
+        .filter(Boolean).slice(0, 4);
 
       renderSuggestions(suggestions);
       setStatus('ok', `AI ready · ${allFolders.length} folders loaded`);
 
     } catch(e) {
-      console.error(e);
+      console.error('AI error:', e);
       setStatus('error', 'AI error: ' + e.message);
-      // Still show search so user can file manually
+      // Show search anyway
       document.getElementById('divider').style.display = '';
       document.getElementById('searchSection').classList.remove('hidden');
     }
   }
 
-  // ── Render suggestion cards ───────────────────────────────────────────────
+  // ── Render suggestion buttons ──────────────────────────────────────────────
   function renderSuggestions(suggestions) {
     const list = document.getElementById('suggestionsList');
     list.innerHTML = '';
 
     if (!suggestions.length) {
-      setStatus('warn', 'No matching folders found — use search below.');
+      setStatus('warn', 'No matching folders — use search below.');
       document.getElementById('divider').style.display = '';
       document.getElementById('searchSection').classList.remove('hidden');
       return;
     }
 
-    const history = getHistory();
-    const senderHistory = history[currentMessage.senderEmail] || {};
+    const senderHist = (getHistory()[currentMessage.senderEmail] || {});
 
     suggestions.forEach((folder, i) => {
       const btn = document.createElement('button');
       btn.className = 'folder-btn' + (i === 0 ? ' top-pick' : '');
-
-      const usedCount = senderHistory[folder.name] || 0;
-      const badgeHtml = i === 0
+      const used = senderHist[folder.name] || 0;
+      const badge = i === 0
         ? `<span class="folder-badge ai-pick">AI pick</span>`
-        : usedCount > 0
-          ? `<span class="folder-badge used">×${usedCount}</span>`
-          : '';
+        : used > 0 ? `<span class="folder-badge used">×${used}</span>` : '';
 
       btn.innerHTML = `
         <span class="folder-icon">${getFolderIcon(folder.name)}</span>
         <div class="folder-info">
           <div class="folder-name">${escHtml(folder.name)}</div>
-          ${folder.path !== folder.name ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
-        </div>
-        ${badgeHtml}
-      `;
+          ${folder.path !== folder.name
+            ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+        </div>${badge}`;
       btn.onclick = () => moveToFolder(folder);
       list.appendChild(btn);
     });
@@ -639,58 +713,93 @@ No explanation, no markdown, just the JSON array.`;
     document.getElementById('searchSection').classList.remove('hidden');
   }
 
-  // ── Set up search/filter ──────────────────────────────────────────────────
+  // ── Search / filter ────────────────────────────────────────────────────────
   function setupSearch(folders) {
     const input   = document.getElementById('searchInput');
     const results = document.getElementById('searchResults');
 
-    function render(query) {
-      const q = query.toLowerCase().trim();
-      const filtered = q
+    function render(q) {
+      q = q.toLowerCase().trim();
+      const list = q
         ? folders.filter(f => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
         : folders;
 
       results.innerHTML = '';
-      filtered.slice(0, 20).forEach(folder => {
+      list.slice(0, 30).forEach(folder => {
         const btn = document.createElement('button');
         btn.className = 'folder-btn';
         btn.innerHTML = `
           <span class="folder-icon">${getFolderIcon(folder.name)}</span>
           <div class="folder-info">
             <div class="folder-name">${escHtml(folder.name)}</div>
-            ${folder.path !== folder.name ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
-          </div>
-        `;
+            ${folder.path !== folder.name
+              ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+          </div>`;
         btn.onclick = () => moveToFolder(folder);
         results.appendChild(btn);
       });
 
-      if (!filtered.length) {
+      if (!list.length)
         results.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px 4px">No folders match.</div>';
-      }
     }
 
     input.addEventListener('input', e => render(e.target.value));
     render('');
   }
 
-  // ── Move message to folder via EWS ────────────────────────────────────────
+  // ── Move message ───────────────────────────────────────────────────────────
   function moveToFolder(folder) {
-    const item = Office.context.mailbox.item;
-
-    // Record history
     recordHistory(currentMessage.senderEmail, folder.name);
 
-    // If we have a real EWS folder ID, move via EWS
-    if (folder.id && !['inbox','sentitems','deleteditems','archive','junkemail'].includes(folder.id)) {
-      moveViaEWS(item.itemId, folder);
+    // Prefer Graph API move (works in new Outlook)
+    if (graphToken && folder.id && folder.id.length > 20) {
+      moveViaGraph(folder);
     } else {
-      // Distinguished folders: use EWS with DistinguishedFolderId
-      moveViaEWSDistinguished(item.itemId, folder);
+      moveViaEWS(folder);
     }
   }
 
-  function moveViaEWS(itemId, folder) {
+  async function moveViaGraph(folder) {
+    setStatus('loading', `Moving to ${folder.name}…`);
+    try {
+      // Get the REST item ID from the current item
+      const restId = Office.context.mailbox.convertToRestId(
+        Office.context.mailbox.item.itemId,
+        Office.MailboxEnums.RestVersion.v2_0
+      );
+
+      const resp = await fetch(`${GRAPH_BASE}/me/messages/${restId}/move`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + graphToken,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify({ destinationId: folder.id })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${resp.status}`);
+      }
+
+      showToast(`✓ Moved to ${folder.name}`);
+      setTimeout(() => window.close(), 1400);
+
+    } catch(e) {
+      console.error('Graph move failed:', e);
+      // Try EWS as fallback
+      moveViaEWS(folder);
+    }
+  }
+
+  function moveViaEWS(folder) {
+    const itemId = Office.context.mailbox.item.itemId;
+    const isDistinguished = ['inbox','sentitems','deleteditems','archive','junkemail'].includes(folder.id);
+
+    const toFolderXml = isDistinguished
+      ? `<t:DistinguishedFolderId Id="${escAttr(folder.id)}"/>`
+      : `<t:FolderId Id="${escAttr(folder.id)}"/>`;
+
     const soap = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
@@ -699,7 +808,7 @@ No explanation, no markdown, just the JSON array.`;
   <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
   <soap:Body>
     <m:MoveItem>
-      <m:ToFolderId><t:FolderId Id="${escAttr(folder.id)}"/></m:ToFolderId>
+      <m:ToFolderId>${toFolderXml}</m:ToFolderId>
       <m:ItemIds><t:ItemId Id="${escAttr(itemId)}"/></m:ItemIds>
     </m:MoveItem>
   </soap:Body>
@@ -707,40 +816,16 @@ No explanation, no markdown, just the JSON array.`;
 
     Office.context.mailbox.makeEwsRequestAsync(soap, result => {
       if (result.status === Office.AsyncResultStatus.Succeeded) {
-        showToast(`Moved to ${folder.name}`);
+        showToast(`✓ Moved to ${folder.name}`);
         setTimeout(() => window.close(), 1400);
       } else {
-        showToast(`Move failed: ${result.error?.message || 'unknown error'}`, true);
+        setStatus('error', 'Move failed: ' + (result.error?.message || 'unknown'));
+        showToast('Move failed — ' + (result.error?.message || 'unknown'), true);
       }
     });
   }
 
-  function moveViaEWSDistinguished(itemId, folder) {
-    const soap = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
-               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
-  <soap:Body>
-    <m:MoveItem>
-      <m:ToFolderId><t:DistinguishedFolderId Id="${escAttr(folder.id)}"/></m:ToFolderId>
-      <m:ItemIds><t:ItemId Id="${escAttr(itemId)}"/></m:ItemIds>
-    </m:MoveItem>
-  </soap:Body>
-</soap:Envelope>`;
-
-    Office.context.mailbox.makeEwsRequestAsync(soap, result => {
-      if (result.status === Office.AsyncResultStatus.Succeeded) {
-        showToast(`Moved to ${folder.name}`);
-        setTimeout(() => window.close(), 1400);
-      } else {
-        showToast(`Move failed: ${result.error?.message || 'unknown'}`, true);
-      }
-    });
-  }
-
-  // ── History (localStorage) ────────────────────────────────────────────────
+  // ── History ────────────────────────────────────────────────────────────────
   function getHistory() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '{}'); }
     catch { return {}; }
@@ -753,15 +838,10 @@ No explanation, no markdown, just the JSON array.`;
     localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(h));
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function setStatus(type, text) {
-    const spinner  = document.getElementById('statusSpinner');
-    const statusEl = document.getElementById('statusText');
-    const line     = document.getElementById('statusLine');
-
-    // Clear
+    const line = document.getElementById('statusLine');
     line.innerHTML = '';
-
     if (type === 'loading') {
       const s = document.createElement('div'); s.className = 'spinner';
       line.appendChild(s);
@@ -800,11 +880,11 @@ No explanation, no markdown, just the JSON array.`;
   }
 
   function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function escAttr(s) {
-    return (s || '').replace(/"/g, '&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s || '').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
   </script>
 </body>
