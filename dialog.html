@@ -345,6 +345,8 @@
       <div class="spinner" id="statusSpinner"></div>
       <span id="statusText">Reading message…</span>
     </div>
+    <div id="debugOut" style="display:none;font-family:'DM Mono',monospace;font-size:10px;color:var(--warn);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>
+    <button id="debugBtn" onclick="toggleDebug()" style="display:none;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:3px 8px;cursor:pointer;align-self:flex-end;">show debug</button>
 
     <!-- AI Suggestions -->
     <div id="suggestionsSection" class="hidden">
@@ -448,121 +450,139 @@
     });
   }
 
-  // ── Step 3: Load folders via Graph (with EWS fallback) ────────────────────
+  // ── Debug helpers ──────────────────────────────────────────────────────────
+  const debugLines = [];
+  function dbg(msg) {
+    const line = `[${new Date().toISOString().slice(11,23)}] ${msg}`;
+    debugLines.push(line);
+    console.log(line);
+    const el = document.getElementById('debugOut');
+    if (el) el.textContent = debugLines.slice(-40).join('\n');
+  }
+  function toggleDebug() {
+    const el  = document.getElementById('debugOut');
+    const btn = document.getElementById('debugBtn');
+    if (el.style.display === 'none') { el.style.display = ''; btn.textContent = 'hide debug'; }
+    else { el.style.display = 'none'; btn.textContent = 'show debug'; }
+  }
+  function showDebugBtn() {
+    document.getElementById('debugBtn').style.display = 'block';
+  }
+
+  // ── Step 3: Load folders via Exchange REST (with EWS fallback) ───────────
   async function loadFolders(token) {
     setStatus('loading', 'Loading folders…');
+    showDebugBtn();
+    dbg(`token present: ${!!token}`);
+    dbg(`restUrl: ${Office.context.mailbox.restUrl || '(not set)'}`);
 
     if (token) {
       try {
-        const folders = await fetchFoldersGraph(token);
+        const folders = await fetchFoldersREST(token);
+        dbg(`REST success: ${folders.length} folders`);
         allFolders = folders;
         setupSearch(folders);
         callAIForSuggestions();
         return;
       } catch(e) {
-        setStatus('loading', 'Graph failed, trying EWS…');
-        console.warn('Graph folder fetch failed:', e.message);
+        dbg(`REST failed: ${e.message}`);
+        setStatus('loading', 'Trying EWS…');
       }
     }
 
-    // EWS fallback
     tryEWSFolders();
   }
 
-  // ── Graph: fetch all mail folders recursively ──────────────────────────────
-  async function fetchFoldersGraph(token) {
+  // ── Exchange REST: fetch all folders recursively ───────────────────────────
+  // Uses outlook.office.com/api/v2.0 which accepts the callback token directly
+  async function fetchFoldersREST(token) {
+    const BASE = Office.context.mailbox.restUrl || 'https://outlook.office.com/api/v2.0';
+    dbg(`REST base: ${BASE}`);
     const SKIP = new Set(['Sync Issues','Conflicts','Server Failures',
       'Local Failures','Conversation History','Quick Step Settings',
-      'Recoverable Items','Purges','Versions','Audits']);
+      'Recoverable Items','Purges','Versions','Audits','Drafts Subfolder']);
 
     async function fetchPage(url) {
+      dbg(`GET ${url.replace(BASE,'')}`);
       const r = await fetch(url, {
-        headers: { Authorization: 'Bearer ' + token }
+        headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
       });
       if (!r.ok) {
         const txt = await r.text();
-        throw new Error(`Graph ${r.status}: ${txt}`);
+        dbg(`  → ${r.status} ${txt.slice(0,120)}`);
+        throw new Error(`REST ${r.status}: ${txt}`);
       }
-      return r.json();
+      const j = await r.json();
+      dbg(`  → ${(j.value||[]).length} items`);
+      return j;
     }
 
-    // Get top-level folders, then child folders for each
     const results = [];
 
-    async function collectChildren(parentId, parentName) {
-      let url = `${GRAPH_BASE}/me/mailFolders/${parentId}/childFolders?$top=100&$select=id,displayName,childFolderCount`;
+    // Recursively collect subfolders of a given folder ID
+    async function collectChildren(parentId, parentPath) {
+      let url = `${BASE}/me/MailFolders/${parentId}/ChildFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
       while (url) {
         const page = await fetchPage(url);
-        for (const f of (page.value || [])) {
-          if (SKIP.has(f.displayName)) continue;
-          const path = parentName ? `${parentName} / ${f.displayName}` : f.displayName;
-          results.push({ id: f.id, name: f.displayName, path });
-          if (f.childFolderCount > 0) {
-            await collectChildren(f.id, path);
+        const items = page.value || [];
+        for (const f of items) {
+          if (SKIP.has(f.DisplayName)) continue;
+          const path = parentPath ? `${parentPath} / ${f.DisplayName}` : f.DisplayName;
+          results.push({ id: f.Id, name: f.DisplayName, path });
+          if ((f.ChildFolderCount || 0) > 0) {
+            await collectChildren(f.Id, path);
           }
         }
         url = page['@odata.nextLink'] || null;
       }
     }
 
-    // Helper: fetch one root tree by its well-known folder name
-    async function collectRoot(wellKnownName, labelPrefix) {
-      // First resolve the root folder's real ID
-      let rootId, rootDisplayName;
+    // Collect children of a well-known root without adding the root itself
+    async function collectWellKnown(wellKnownId, labelPrefix) {
       try {
-        const rootData = await fetchPage(
-          `${GRAPH_BASE}/me/mailFolders/${wellKnownName}?$select=id,displayName,childFolderCount`
-        );
-        rootId          = rootData.id;
-        rootDisplayName = labelPrefix || rootData.displayName;
-        // Add the root itself only if it's not a generic system name
-        // (e.g. skip bare "Archive" root — its children are what matter)
-      } catch(e) {
-        // Well-known folder doesn't exist for this account — skip silently
-        return;
-      }
-
-      // Fetch its direct children as top-level entries, then recurse
-      let url = `${GRAPH_BASE}/me/mailFolders/${rootId}/childFolders?$top=100&$select=id,displayName,childFolderCount`;
-      while (url) {
-        const page = await fetchPage(url);
-        for (const f of (page.value || [])) {
-          if (SKIP.has(f.displayName)) continue;
-          const path = rootDisplayName
-            ? `${rootDisplayName} / ${f.displayName}`
-            : f.displayName;
-          results.push({ id: f.id, name: f.displayName, path });
-          if (f.childFolderCount > 0) {
-            await collectChildren(f.id, path);
+        const root = await fetchPage(`${BASE}/me/MailFolders/${wellKnownId}?$select=Id,DisplayName,ChildFolderCount`);
+        if (!root || !root.Id) return;
+        let url = `${BASE}/me/MailFolders/${root.Id}/ChildFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
+        while (url) {
+          const page = await fetchPage(url);
+          const items = page.value || [];
+          for (const f of items) {
+            if (SKIP.has(f.DisplayName)) continue;
+            const path = labelPrefix ? `${labelPrefix} / ${f.DisplayName}` : f.DisplayName;
+            results.push({ id: f.Id, name: f.DisplayName, path });
+            if ((f.ChildFolderCount || 0) > 0) {
+              await collectChildren(f.Id, path);
+            }
           }
+          url = page['@odata.nextLink'] || null;
         }
-        url = page['@odata.nextLink'] || null;
+      } catch(e) {
+        // Well-known folder not present — skip silently
+        console.log(`Well-known folder ${wellKnownId} not found:`, e.message);
       }
     }
 
-    // ── Fetch regular mail folder root ──
-    let url = `${GRAPH_BASE}/me/mailFolders?$top=100&$select=id,displayName,childFolderCount`;
+    // 1. Fetch all top-level mail folders
+    let url = `${BASE}/me/MailFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
     while (url) {
       const page = await fetchPage(url);
-      for (const f of (page.value || [])) {
-        if (SKIP.has(f.displayName)) continue;
-        results.push({ id: f.id, name: f.displayName, path: f.displayName });
-        if (f.childFolderCount > 0) {
-          await collectChildren(f.id, f.displayName);
+      const items = page.value || [];
+      for (const f of items) {
+        if (SKIP.has(f.DisplayName)) continue;
+        results.push({ id: f.Id, name: f.DisplayName, path: f.DisplayName });
+        if ((f.ChildFolderCount || 0) > 0) {
+          await collectChildren(f.Id, f.DisplayName);
         }
       }
       url = page['@odata.nextLink'] || null;
     }
 
-    // ── Fetch Archive root (separate root in Exchange, missed by mailFolders) ──
-    await collectRoot('archiveMsgFolderRoot', 'Archive');
+    // 2. Explicitly fetch Archive root children (separate root, not in MailFolders list)
+    await collectWellKnown('archivemsgfolderroot', 'Archive');
 
-    // ── Fetch In-Place Archive if it exists (online archive mailbox) ──
-    await collectRoot('archiveRoot', 'Online Archive');
+    if (!results.length) throw new Error('No folders returned from REST');
 
-    if (!results.length) throw new Error('No folders returned');
-
-    // Deduplicate by folder ID (in case Archive appears in both trees)
+    // Deduplicate by ID
     const seen = new Set();
     return results.filter(f => {
       if (seen.has(f.id)) return false;
@@ -811,32 +831,32 @@ No explanation, no markdown fences.`;
   async function moveViaGraph(folder) {
     setStatus('loading', `Moving to ${folder.name}…`);
     try {
-      // Get the REST item ID from the current item
+      const BASE = Office.context.mailbox.restUrl || 'https://outlook.office.com/api/v2.0';
+
       const restId = Office.context.mailbox.convertToRestId(
         Office.context.mailbox.item.itemId,
         Office.MailboxEnums.RestVersion.v2_0
       );
 
-      const resp = await fetch(`${GRAPH_BASE}/me/messages/${restId}/move`, {
+      const resp = await fetch(`${BASE}/me/messages/${restId}/move`, {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + graphToken,
           'Content-Type':  'application/json'
         },
-        body: JSON.stringify({ destinationId: folder.id })
+        body: JSON.stringify({ DestinationId: folder.id })
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error?.message || `HTTP ${resp.status}`);
+        throw new Error((err.error?.message) || `HTTP ${resp.status}`);
       }
 
       showToast(`✓ Moved to ${folder.name}`);
       setTimeout(() => window.close(), 1400);
 
     } catch(e) {
-      console.error('Graph move failed:', e);
-      // Try EWS as fallback
+      console.error('REST move failed:', e);
       moveViaEWS(folder);
     }
   }
