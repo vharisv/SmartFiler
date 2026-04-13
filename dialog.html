@@ -411,20 +411,15 @@
     document.getElementById('mainUI').classList.remove('hidden');
   }
 
-  // ── Step 1: Get Graph token ────────────────────────────────────────────────
   function loadMessageAndSuggest() {
-    setStatus('loading', 'Authenticating…');
+    setStatus('loading', 'Reading message…');
+    showDebugBtn();
+    dbg(`restUrl: ${Office.context.mailbox.restUrl}`);
+    dbg(`host: ${Office.context.host}`);
 
-    Office.context.mailbox.getCallbackTokenAsync({ isRest: true }, tokenResult => {
-      if (tokenResult.status !== Office.AsyncResultStatus.Succeeded) {
-        setStatus('error', 'Auth failed: ' + (tokenResult.error?.message || 'no token'));
-        // Still try to read message and show manual search
-        readMessageMeta(null);
-        return;
-      }
-      graphToken = tokenResult.value;
-      readMessageMeta(graphToken);
-    });
+    // Skip REST token — go straight to reading message then EWS for folders
+    // (REST token requires Azure AD app registration for sideloaded add-ins)
+    readMessageMeta(null);
   }
 
   // ── Step 2: Read message metadata ─────────────────────────────────────────
@@ -471,192 +466,134 @@
 
   // ── Step 3: Load folders via Exchange REST (with EWS fallback) ───────────
   async function loadFolders(token) {
-    setStatus('loading', 'Loading folders…');
-    showDebugBtn();
-    dbg(`token present: ${!!token}`);
-    dbg(`restUrl: ${Office.context.mailbox.restUrl || '(not set)'}`);
-
-    if (token) {
-      try {
-        const folders = await fetchFoldersREST(token);
-        dbg(`REST success: ${folders.length} folders`);
-        allFolders = folders;
-        setupSearch(folders);
-        callAIForSuggestions();
-        return;
-      } catch(e) {
-        dbg(`REST failed: ${e.message}`);
-        setStatus('loading', 'Trying EWS…');
-      }
-    }
-
+    setStatus('loading', 'Loading folders via EWS…');
     tryEWSFolders();
   }
 
-  // ── Exchange REST: fetch all folders recursively ───────────────────────────
-  // Uses outlook.office.com/api/v2.0 which accepts the callback token directly
-  async function fetchFoldersREST(token) {
-    const BASE = Office.context.mailbox.restUrl || 'https://outlook.office.com/api/v2.0';
-    dbg(`REST base: ${BASE}`);
-    const SKIP = new Set(['Sync Issues','Conflicts','Server Failures',
-      'Local Failures','Conversation History','Quick Step Settings',
-      'Recoverable Items','Purges','Versions','Audits','Drafts Subfolder']);
-
-    async function fetchPage(url) {
-      dbg(`GET ${url.replace(BASE,'')}`);
-      const r = await fetch(url, {
-        headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
-      });
-      if (!r.ok) {
-        const txt = await r.text();
-        dbg(`  → ${r.status} ${txt.slice(0,120)}`);
-        throw new Error(`REST ${r.status}: ${txt}`);
-      }
-      const j = await r.json();
-      dbg(`  → ${(j.value||[]).length} items`);
-      return j;
-    }
-
-    const results = [];
-
-    // Recursively collect subfolders of a given folder ID
-    async function collectChildren(parentId, parentPath) {
-      let url = `${BASE}/me/MailFolders/${parentId}/ChildFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
-      while (url) {
-        const page = await fetchPage(url);
-        const items = page.value || [];
-        for (const f of items) {
-          if (SKIP.has(f.DisplayName)) continue;
-          const path = parentPath ? `${parentPath} / ${f.DisplayName}` : f.DisplayName;
-          results.push({ id: f.Id, name: f.DisplayName, path });
-          if ((f.ChildFolderCount || 0) > 0) {
-            await collectChildren(f.Id, path);
-          }
-        }
-        url = page['@odata.nextLink'] || null;
-      }
-    }
-
-    // Collect children of a well-known root without adding the root itself
-    async function collectWellKnown(wellKnownId, labelPrefix) {
-      try {
-        const root = await fetchPage(`${BASE}/me/MailFolders/${wellKnownId}?$select=Id,DisplayName,ChildFolderCount`);
-        if (!root || !root.Id) return;
-        let url = `${BASE}/me/MailFolders/${root.Id}/ChildFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
-        while (url) {
-          const page = await fetchPage(url);
-          const items = page.value || [];
-          for (const f of items) {
-            if (SKIP.has(f.DisplayName)) continue;
-            const path = labelPrefix ? `${labelPrefix} / ${f.DisplayName}` : f.DisplayName;
-            results.push({ id: f.Id, name: f.DisplayName, path });
-            if ((f.ChildFolderCount || 0) > 0) {
-              await collectChildren(f.Id, path);
-            }
-          }
-          url = page['@odata.nextLink'] || null;
-        }
-      } catch(e) {
-        // Well-known folder not present — skip silently
-        console.log(`Well-known folder ${wellKnownId} not found:`, e.message);
-      }
-    }
-
-    // 1. Fetch all top-level mail folders
-    let url = `${BASE}/me/MailFolders?$top=100&$select=Id,DisplayName,ChildFolderCount`;
-    while (url) {
-      const page = await fetchPage(url);
-      const items = page.value || [];
-      for (const f of items) {
-        if (SKIP.has(f.DisplayName)) continue;
-        results.push({ id: f.Id, name: f.DisplayName, path: f.DisplayName });
-        if ((f.ChildFolderCount || 0) > 0) {
-          await collectChildren(f.Id, f.DisplayName);
-        }
-      }
-      url = page['@odata.nextLink'] || null;
-    }
-
-    // 2. Explicitly fetch Archive root children (separate root, not in MailFolders list)
-    await collectWellKnown('archivemsgfolderroot', 'Archive');
-
-    if (!results.length) throw new Error('No folders returned from REST');
-
-    // Deduplicate by ID
-    const seen = new Set();
-    return results.filter(f => {
-      if (seen.has(f.id)) return false;
-      seen.add(f.id);
-      return true;
-    });
-  }
-
-  // ── EWS fallback ──────────────────────────────────────────────────────────
+  // ── EWS: fetch all folders ─────────────────────────────────────────────────
   function tryEWSFolders() {
+    dbg('starting EWS folder fetch');
+
+    // Check makeEwsRequestAsync is available
+    if (typeof Office.context.mailbox.makeEwsRequestAsync !== 'function') {
+      dbg('makeEwsRequestAsync not available');
+      useFallbackFolders('EWS not available in this client');
+      return;
+    }
+
     const soap = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
+  <soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/></soap:Header>
   <soap:Body>
     <m:FindFolder Traversal="Deep">
-      <m:FolderShape><t:BaseShape>AllProperties</t:BaseShape></m:FolderShape>
+      <m:FolderShape><t:BaseShape>IdOnly</t:BaseShape>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="folder:DisplayName"/>
+          <t:FieldURI FieldURI="folder:ChildFolderCount"/>
+          <t:FieldURI FieldURI="folder:FolderClass"/>
+        </t:AdditionalProperties>
+      </m:FolderShape>
       <m:ParentFolderIds>
         <t:DistinguishedFolderId Id="msgfolderroot"/>
-        <t:DistinguishedFolderId Id="archivemsgfolderroot"/>
       </m:ParentFolderIds>
     </m:FindFolder>
   </soap:Body>
 </soap:Envelope>`;
 
-    // Timeout EWS after 8 seconds
-    let done = false;
+    let responded = false;
     const timer = setTimeout(() => {
-      if (!done) { done = true; useFallbackFolders('EWS timed out'); }
-    }, 8000);
+      if (!responded) {
+        responded = true;
+        dbg('EWS timed out after 12s');
+        useFallbackFolders('EWS timed out');
+      }
+    }, 12000);
 
     try {
+      dbg('calling makeEwsRequestAsync…');
       Office.context.mailbox.makeEwsRequestAsync(soap, result => {
-        if (done) return;
+        if (responded) return;
+        responded = true;
         clearTimeout(timer);
-        done = true;
+
+        dbg(`EWS callback status: ${result.status}`);
 
         if (result.status !== Office.AsyncResultStatus.Succeeded) {
-          useFallbackFolders(result.error?.message || 'EWS unavailable');
+          dbg(`EWS error: ${JSON.stringify(result.error)}`);
+          useFallbackFolders(`EWS error: ${result.error?.message || result.status}`);
           return;
         }
 
+        dbg(`EWS response length: ${result.value ? result.value.length : 0}`);
+
         try {
-          const parser = new DOMParser();
-          const xml    = parser.parseFromString(result.value, 'text/xml');
-          const ns     = 'http://schemas.microsoft.com/exchange/services/2006/types';
-          const nodes  = xml.getElementsByTagNameNS(ns, 'Folder');
-          const SKIP   = new Set(['Sync Issues','Conflicts','Server Failures',
-            'Local Failures','Conversation History','Quick Step Settings']);
+          const parser  = new DOMParser();
+          const xml     = parser.parseFromString(result.value, 'text/xml');
+          const NS      = 'http://schemas.microsoft.com/exchange/services/2006/types';
+          const nodes   = Array.from(xml.getElementsByTagNameNS(NS, 'Folder'));
+          dbg(`EWS folder nodes found: ${nodes.length}`);
+
+          const SKIP = new Set(['Sync Issues','Conflicts','Server Failures',
+            'Local Failures','Conversation History','Quick Step Settings',
+            'Recoverable Items','Purges','Versions','Audits','Junk Email',
+            'Outbox','Drafts','Deleted Items','Sent Items','RSS Feeds',
+            'Notes','Tasks','Calendar','Contacts','People I Know',
+            'Clutter','Conversation Action Settings']);
 
           const folders = [];
           for (const f of nodes) {
-            const idEl   = f.getElementsByTagNameNS(ns, 'FolderId')[0];
-            const nameEl = f.getElementsByTagNameNS(ns, 'DisplayName')[0];
+            const idEl   = f.getElementsByTagNameNS(NS, 'FolderId')[0];
+            const nameEl = f.getElementsByTagNameNS(NS, 'DisplayName')[0];
+            const clsEl  = f.getElementsByTagNameNS(NS, 'FolderClass')[0];
             if (!idEl || !nameEl) continue;
             const name = nameEl.textContent.trim();
-            if (SKIP.has(name)) continue;
+            const cls  = clsEl ? clsEl.textContent.trim() : '';
+            // Only mail folders (IPF.Note) or unset class
+            if (cls && cls !== 'IPF.Note') continue;
+            if (SKIP.has(name) || !name) continue;
             folders.push({ id: idEl.getAttribute('Id'), name, path: name });
           }
 
-          if (!folders.length) { useFallbackFolders('EWS returned 0 folders'); return; }
+          dbg(`folders after filter: ${folders.length}`);
+
+          if (!folders.length) {
+            // Try without class filter — maybe all classes are blank
+            dbg('retry without class filter');
+            for (const f of nodes) {
+              const idEl   = f.getElementsByTagNameNS(NS, 'FolderId')[0];
+              const nameEl = f.getElementsByTagNameNS(NS, 'DisplayName')[0];
+              if (!idEl || !nameEl) continue;
+              const name = nameEl.textContent.trim();
+              if (SKIP.has(name) || !name) continue;
+              if (!folders.find(x => x.name === name)) {
+                folders.push({ id: idEl.getAttribute('Id'), name, path: name });
+              }
+            }
+            dbg(`folders after retry: ${folders.length}`);
+          }
+
+          if (!folders.length) {
+            useFallbackFolders('EWS returned 0 usable folders');
+            return;
+          }
 
           allFolders = folders;
           setupSearch(folders);
           callAIForSuggestions();
+
         } catch(parseErr) {
-          useFallbackFolders('EWS parse error: ' + parseErr.message);
+          dbg(`EWS parse error: ${parseErr.message}`);
+          useFallbackFolders('EWS parse failed');
         }
       });
     } catch(e) {
       clearTimeout(timer);
-      useFallbackFolders('EWS exception: ' + e.message);
+      responded = true;
+      dbg(`EWS exception: ${e.message}`);
+      useFallbackFolders(`EWS exception: ${e.message}`);
     }
   }
 
@@ -819,13 +756,8 @@ No explanation, no markdown fences.`;
   // ── Move message ───────────────────────────────────────────────────────────
   function moveToFolder(folder) {
     recordHistory(currentMessage.senderEmail, folder.name);
-
-    // Prefer Graph API move (works in new Outlook)
-    if (graphToken && folder.id && folder.id.length > 20) {
-      moveViaGraph(folder);
-    } else {
-      moveViaEWS(folder);
-    }
+    dbg(`moving to: ${folder.name} (id: ${folder.id ? folder.id.slice(0,20) : 'none'}…)`);
+    moveViaEWS(folder);
   }
 
   async function moveViaGraph(folder) {
