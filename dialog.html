@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartFiler</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0f11;
+      --surface:   #18181c;
+      --border:    #2a2a32;
+      --accent:    #7c6af7;
+      --accent-2:  #a78bfa;
+      --success:   #34d399;
+      --warn:      #fbbf24;
+      --text:      #e8e8f0;
+      --muted:     #6b6b80;
+      --danger:    #f87171;
+      --radius:    10px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 12px;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+    .title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
+    .subtitle { font-size: 11px; color: var(--muted); margin-left: auto; font-family: 'DM Mono', monospace; }
+
+    /* ── Message Preview ── */
+    .msg-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .msg-from {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-2);
+      font-family: 'DM Mono', monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .msg-subject {
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .msg-preview {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── Status / Loading ── */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.ai    { background: var(--accent); }
+    .dot.ok    { background: var(--success); }
+    .dot.warn  { background: var(--warn); }
+    .dot.error { background: var(--danger); }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 2px;
+    }
+
+    /* ── Folder suggestion cards ── */
+    .suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .folder-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--text);
+      text-align: left;
+      width: 100%;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+      position: relative;
+      overflow: hidden;
+    }
+    .folder-btn::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: transparent;
+      transition: background 0.15s;
+    }
+    .folder-btn:hover {
+      border-color: var(--accent);
+      background: #1e1e28;
+      transform: translateX(2px);
+    }
+    .folder-btn:hover::before { background: var(--accent); }
+    .folder-btn:active { transform: translateX(1px) scale(0.99); }
+
+    .folder-btn.top-pick {
+      border-color: #3d3560;
+      background: #1a1830;
+    }
+    .folder-btn.top-pick::before { background: var(--accent); }
+
+    .folder-icon { font-size: 15px; flex-shrink: 0; }
+
+    .folder-info { flex: 1; min-width: 0; }
+    .folder-name {
+      font-size: 12px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .folder-path {
+      font-size: 10px; color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .folder-badge {
+      font-size: 10px;
+      font-family: 'DM Mono', monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .folder-badge.ai-pick {
+      background: #2d2650;
+      color: var(--accent-2);
+    }
+    .folder-badge.used {
+      background: #1e2a20;
+      color: var(--success);
+    }
+
+    /* ── Manual search ── */
+    .search-wrap {
+      position: relative;
+    }
+    .search-icon {
+      position: absolute; left: 10px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted); font-size: 12px; pointer-events: none;
+    }
+    .search-input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 10px 8px 30px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input::placeholder { color: var(--muted); }
+    .search-input:focus { border-color: var(--accent); }
+
+    .search-results {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .search-results::-webkit-scrollbar { width: 4px; }
+    .search-results::-webkit-scrollbar-track { background: transparent; }
+    .search-results::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 16px; left: 16px; right: 16px;
+      background: var(--success);
+      color: #0a1a12;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+      transform: translateY(60px);
+      opacity: 0;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      z-index: 100;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { background: var(--danger); color: #1a0a0a; }
+
+    /* ── API Key setup ── */
+    .setup-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .setup-title { font-size: 12px; font-weight: 600; }
+    .setup-desc { font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .key-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .key-input:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: 8px 14px;
+      border-radius: 7px;
+      border: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff;
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+    .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+    }
+
+    /* hide/show helpers */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">📂</div>
+    <span class="title">SmartFiler</span>
+    <span class="subtitle" id="modelBadge">claude · ai</span>
+  </div>
+
+  <!-- API Key Setup Panel (shown when no key stored) -->
+  <div class="setup-panel" id="setupPanel">
+    <div class="setup-title">🔑 Enter your Anthropic API Key</div>
+    <div class="setup-desc">
+      Your key is stored only in your browser (localStorage) and never sent anywhere except directly to Anthropic's API.
+      Get a key at <strong>console.anthropic.com</strong>.
+    </div>
+    <input class="key-input" type="password" id="apiKeyInput" placeholder="sk-ant-..."/>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveApiKey()">Save &amp; Continue</button>
+    </div>
+  </div>
+
+  <!-- Main Filing UI (shown after key is set) -->
+  <div id="mainUI" class="hidden">
+
+    <!-- Message Preview -->
+    <div class="msg-card" id="msgCard">
+      <div class="msg-from" id="msgFrom">Loading…</div>
+      <div class="msg-subject" id="msgSubject"></div>
+      <div class="msg-preview" id="msgPreview"></div>
+    </div>
+
+    <!-- Status line -->
+    <div class="status" id="statusLine">
+      <div class="spinner" id="statusSpinner"></div>
+      <span id="statusText">Reading message…</span>
+    </div>
+
+    <!-- AI Suggestions -->
+    <div id="suggestionsSection" class="hidden">
+      <div class="section-label" style="margin-bottom:6px">AI suggestions</div>
+      <div class="suggestions" id="suggestionsList"></div>
+    </div>
+
+    <hr class="divider" id="divider" style="display:none"/>
+
+    <!-- Manual Search -->
+    <div id="searchSection" class="hidden">
+      <div class="section-label" style="margin-bottom:6px">All folders</div>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="searchInput" type="text" placeholder="Type to filter folders…"/>
+      </div>
+      <div class="search-results" id="searchResults" style="margin-top:6px"></div>
+    </div>
+
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast">✓ <span id="toastMsg">Filed!</span></div>
+
+  <script>
+  // ── Constants ──────────────────────────────────────────────────────────────
+  const STORAGE_KEY_APIKEY   = 'sf_apikey';
+  const STORAGE_KEY_HISTORY  = 'sf_history'; // { senderEmail: { folderPath: count } }
+  const MODEL = 'claude-sonnet-4-20250514';
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allFolders = [];
+  let currentMessage = null;
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  Office.onReady(info => {
+    if (info.host === Office.HostType.Outlook) {
+      const key = localStorage.getItem(STORAGE_KEY_APIKEY);
+      if (key) {
+        showMain();
+        loadMessageAndSuggest();
+      }
+      // else setupPanel is already visible
+    }
+  });
+
+  // ── API Key management ────────────────────────────────────────────────────
+  function saveApiKey() {
+    const val = document.getElementById('apiKeyInput').value.trim();
+    if (!val.startsWith('sk-ant-')) {
+      showToast('Key should start with sk-ant-', true);
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY_APIKEY, val);
+    showMain();
+    loadMessageAndSuggest();
+  }
+
+  function showMain() {
+    document.getElementById('setupPanel').classList.add('hidden');
+    document.getElementById('mainUI').classList.remove('hidden');
+  }
+
+  // ── Load message metadata from Office.js ─────────────────────────────────
+  function loadMessageAndSuggest() {
+    const item = Office.context.mailbox.item;
+    if (!item) { setStatus('warn', 'No message selected.'); return; }
+
+    // Get sender
+    const senderEmail = item.from ? item.from.emailAddress : 'unknown';
+    const senderName  = item.from ? (item.from.displayName || senderEmail) : 'Unknown';
+    const subject     = item.subject || '(no subject)';
+
+    currentMessage = { senderEmail, senderName, subject };
+
+    // Update preview card
+    document.getElementById('msgFrom').textContent    = `${senderName} <${senderEmail}>`;
+    document.getElementById('msgSubject').textContent = subject;
+
+    // Get body preview
+    item.body.getAsync(Office.CoercionType.Text, { asyncContext: 'body' }, result => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) {
+        const preview = result.value.trim().substring(0, 120).replace(/\s+/g, ' ');
+        document.getElementById('msgPreview').textContent = preview || '';
+        currentMessage.bodyPreview = preview;
+      }
+      // Load folders then call AI
+      loadFolders();
+    });
+  }
+
+  // ── Load all Outlook folders ──────────────────────────────────────────────
+  function loadFolders() {
+    setStatus('loading', 'Loading folders…');
+    const mailbox = Office.context.mailbox;
+
+    // Office.js doesn't expose full folder tree directly; use EWS or REST
+    // We'll use the newer Office JS mailbox.folders if available, else EWS fallback
+    if (mailbox.item && typeof Office.context.mailbox.getFolderAsync === 'function') {
+      // Future API — use EWS for now
+    }
+
+    // Use EWS to get all folders
+    getFoldersViaEWS(folders => {
+      allFolders = folders;
+      setupSearch(folders);
+      if (folders.length === 0) {
+        setStatus('warn', 'No folders found. Check permissions.');
+        return;
+      }
+      callAIForSuggestions();
+    });
+  }
+
+  // ── EWS: Fetch folder list ─────────────────────────────────────────────────
+  function getFoldersViaEWS(callback) {
+    const soapEnv = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:FindFolder Traversal="Deep">
+      <m:FolderShape>
+        <t:BaseShape>AllProperties</t:BaseShape>
+      </m:FolderShape>
+      <m:ParentFolderIds>
+        <t:DistinguishedFolderId Id="msgfolderroot"/>
+      </m:ParentFolderIds>
+    </m:FindFolder>
+  </soap:Body>
+</soap:Envelope>`;
+
+    Office.context.mailbox.makeEwsRequestAsync(soapEnv, result => {
+      if (result.status !== Office.AsyncResultStatus.Succeeded) {
+        // EWS not available — build a minimal fallback list from known folders
+        const fallback = [
+          { id: 'inbox',           name: 'Inbox',        path: 'Inbox' },
+          { id: 'sentitems',       name: 'Sent Items',   path: 'Sent Items' },
+          { id: 'deleteditems',    name: 'Deleted Items',path: 'Deleted Items' },
+          { id: 'archive',         name: 'Archive',      path: 'Archive' },
+          { id: 'junkemail',       name: 'Junk Email',   path: 'Junk Email' },
+        ];
+        callback(fallback);
+        return;
+      }
+
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(result.value, 'text/xml');
+      const folderNodes = xml.getElementsByTagNameNS(
+        'http://schemas.microsoft.com/exchange/services/2006/types', 'Folder');
+
+      const folders = [];
+      for (let f of folderNodes) {
+        const idEl   = f.getElementsByTagNameNS('http://schemas.microsoft.com/exchange/services/2006/types', 'FolderId')[0];
+        const nameEl = f.getElementsByTagNameNS('http://schemas.microsoft.com/exchange/services/2006/types', 'DisplayName')[0];
+        if (!idEl || !nameEl) continue;
+        const name = nameEl.textContent.trim();
+        // Skip system folders
+        if (['Sync Issues','Conflicts','Server Failures','Local Failures',
+             'Conversation History','Quick Step Settings','People I Know'].includes(name)) continue;
+
+        folders.push({
+          id:   idEl.getAttribute('Id'),
+          name: name,
+          path: name  // EWS Deep doesn't give path; name is sufficient for display
+        });
+      }
+      callback(folders);
+    });
+  }
+
+  // ── Call Claude API for folder suggestions ────────────────────────────────
+  async function callAIForSuggestions() {
+    setStatus('loading', 'Asking AI for suggestions…');
+    const apiKey = localStorage.getItem(STORAGE_KEY_APIKEY);
+    if (!apiKey) return;
+
+    const history = getHistory();
+    const senderHistory = history[currentMessage.senderEmail] || {};
+    const topPrior = Object.entries(senderHistory)
+      .sort((a,b) => b[1]-a[1])
+      .slice(0,5)
+      .map(([path, count]) => `"${path}" (used ${count}x)`)
+      .join(', ') || 'none';
+
+    const folderList = allFolders.map(f => f.name).slice(0,80).join(', ');
+
+    const prompt = `You are an email filing assistant. Your job is to suggest the best Outlook folders to file an email into.
+
+Email details:
+- From: ${currentMessage.senderName} <${currentMessage.senderEmail}>
+- Subject: ${currentMessage.subject}
+- Body preview: ${currentMessage.bodyPreview || '(not available)'}
+
+Available folders: ${folderList}
+
+Previous filing history for this sender: ${topPrior}
+
+Return ONLY a JSON array of up to 4 folder name suggestions, ranked best-first, from the available folders list. Example:
+["Projects", "Finance", "Team Updates", "Inbox"]
+
+No explanation, no markdown, just the JSON array.`;
+
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type':      'application/json',
+          'x-api-key':         apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model:      MODEL,
+          max_tokens: 200,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error?.message || resp.statusText);
+      }
+
+      const data  = await resp.json();
+      const text  = data.content[0].text.trim();
+      const clean = text.replace(/```json|```/g, '').trim();
+      const names = JSON.parse(clean);
+
+      // Map names to folder objects
+      const suggestions = names
+        .map(name => allFolders.find(f => f.name.toLowerCase() === name.toLowerCase()))
+        .filter(Boolean)
+        .slice(0, 4);
+
+      renderSuggestions(suggestions);
+      setStatus('ok', `AI ready · ${allFolders.length} folders loaded`);
+
+    } catch(e) {
+      console.error(e);
+      setStatus('error', 'AI error: ' + e.message);
+      // Still show search so user can file manually
+      document.getElementById('divider').style.display = '';
+      document.getElementById('searchSection').classList.remove('hidden');
+    }
+  }
+
+  // ── Render suggestion cards ───────────────────────────────────────────────
+  function renderSuggestions(suggestions) {
+    const list = document.getElementById('suggestionsList');
+    list.innerHTML = '';
+
+    if (!suggestions.length) {
+      setStatus('warn', 'No matching folders found — use search below.');
+      document.getElementById('divider').style.display = '';
+      document.getElementById('searchSection').classList.remove('hidden');
+      return;
+    }
+
+    const history = getHistory();
+    const senderHistory = history[currentMessage.senderEmail] || {};
+
+    suggestions.forEach((folder, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'folder-btn' + (i === 0 ? ' top-pick' : '');
+
+      const usedCount = senderHistory[folder.name] || 0;
+      const badgeHtml = i === 0
+        ? `<span class="folder-badge ai-pick">AI pick</span>`
+        : usedCount > 0
+          ? `<span class="folder-badge used">×${usedCount}</span>`
+          : '';
+
+      btn.innerHTML = `
+        <span class="folder-icon">${getFolderIcon(folder.name)}</span>
+        <div class="folder-info">
+          <div class="folder-name">${escHtml(folder.name)}</div>
+          ${folder.path !== folder.name ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+        </div>
+        ${badgeHtml}
+      `;
+      btn.onclick = () => moveToFolder(folder);
+      list.appendChild(btn);
+    });
+
+    document.getElementById('suggestionsSection').classList.remove('hidden');
+    document.getElementById('divider').style.display = '';
+    document.getElementById('searchSection').classList.remove('hidden');
+  }
+
+  // ── Set up search/filter ──────────────────────────────────────────────────
+  function setupSearch(folders) {
+    const input   = document.getElementById('searchInput');
+    const results = document.getElementById('searchResults');
+
+    function render(query) {
+      const q = query.toLowerCase().trim();
+      const filtered = q
+        ? folders.filter(f => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
+        : folders;
+
+      results.innerHTML = '';
+      filtered.slice(0, 20).forEach(folder => {
+        const btn = document.createElement('button');
+        btn.className = 'folder-btn';
+        btn.innerHTML = `
+          <span class="folder-icon">${getFolderIcon(folder.name)}</span>
+          <div class="folder-info">
+            <div class="folder-name">${escHtml(folder.name)}</div>
+            ${folder.path !== folder.name ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+          </div>
+        `;
+        btn.onclick = () => moveToFolder(folder);
+        results.appendChild(btn);
+      });
+
+      if (!filtered.length) {
+        results.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px 4px">No folders match.</div>';
+      }
+    }
+
+    input.addEventListener('input', e => render(e.target.value));
+    render('');
+  }
+
+  // ── Move message to folder via EWS ────────────────────────────────────────
+  function moveToFolder(folder) {
+    const item = Office.context.mailbox.item;
+
+    // Record history
+    recordHistory(currentMessage.senderEmail, folder.name);
+
+    // If we have a real EWS folder ID, move via EWS
+    if (folder.id && !['inbox','sentitems','deleteditems','archive','junkemail'].includes(folder.id)) {
+      moveViaEWS(item.itemId, folder);
+    } else {
+      // Distinguished folders: use EWS with DistinguishedFolderId
+      moveViaEWSDistinguished(item.itemId, folder);
+    }
+  }
+
+  function moveViaEWS(itemId, folder) {
+    const soap = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
+  <soap:Body>
+    <m:MoveItem>
+      <m:ToFolderId><t:FolderId Id="${escAttr(folder.id)}"/></m:ToFolderId>
+      <m:ItemIds><t:ItemId Id="${escAttr(itemId)}"/></m:ItemIds>
+    </m:MoveItem>
+  </soap:Body>
+</soap:Envelope>`;
+
+    Office.context.mailbox.makeEwsRequestAsync(soap, result => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) {
+        showToast(`Moved to ${folder.name}`);
+        setTimeout(() => window.close(), 1400);
+      } else {
+        showToast(`Move failed: ${result.error?.message || 'unknown error'}`, true);
+      }
+    });
+  }
+
+  function moveViaEWSDistinguished(itemId, folder) {
+    const soap = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
+  <soap:Body>
+    <m:MoveItem>
+      <m:ToFolderId><t:DistinguishedFolderId Id="${escAttr(folder.id)}"/></m:ToFolderId>
+      <m:ItemIds><t:ItemId Id="${escAttr(itemId)}"/></m:ItemIds>
+    </m:MoveItem>
+  </soap:Body>
+</soap:Envelope>`;
+
+    Office.context.mailbox.makeEwsRequestAsync(soap, result => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) {
+        showToast(`Moved to ${folder.name}`);
+        setTimeout(() => window.close(), 1400);
+      } else {
+        showToast(`Move failed: ${result.error?.message || 'unknown'}`, true);
+      }
+    });
+  }
+
+  // ── History (localStorage) ────────────────────────────────────────────────
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '{}'); }
+    catch { return {}; }
+  }
+
+  function recordHistory(senderEmail, folderName) {
+    const h = getHistory();
+    if (!h[senderEmail]) h[senderEmail] = {};
+    h[senderEmail][folderName] = (h[senderEmail][folderName] || 0) + 1;
+    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(h));
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(type, text) {
+    const spinner  = document.getElementById('statusSpinner');
+    const statusEl = document.getElementById('statusText');
+    const line     = document.getElementById('statusLine');
+
+    // Clear
+    line.innerHTML = '';
+
+    if (type === 'loading') {
+      const s = document.createElement('div'); s.className = 'spinner';
+      line.appendChild(s);
+    } else {
+      const d = document.createElement('div');
+      d.className = `dot ${type === 'ok' ? 'ok' : type === 'warn' ? 'warn' : 'error'}`;
+      line.appendChild(d);
+    }
+    const t = document.createElement('span'); t.textContent = text;
+    line.appendChild(t);
+  }
+
+  function showToast(msg, isError = false) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    toast.className = 'toast' + (isError ? ' error' : '');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  function getFolderIcon(name) {
+    const n = name.toLowerCase();
+    if (n.includes('inbox'))    return '📥';
+    if (n.includes('sent'))     return '📤';
+    if (n.includes('draft'))    return '📝';
+    if (n.includes('trash') || n.includes('deleted')) return '🗑️';
+    if (n.includes('junk') || n.includes('spam'))     return '🚫';
+    if (n.includes('archive'))  return '🗄️';
+    if (n.includes('project'))  return '🗂️';
+    if (n.includes('finance') || n.includes('invoice') || n.includes('billing')) return '💰';
+    if (n.includes('hr') || n.includes('people'))     return '👥';
+    if (n.includes('legal'))    return '⚖️';
+    if (n.includes('report'))   return '📊';
+    if (n.includes('meeting') || n.includes('calendar')) return '📅';
+    return '📁';
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function escAttr(s) {
+    return (s || '').replace(/"/g, '&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  </script>
+</body>
+</html>
