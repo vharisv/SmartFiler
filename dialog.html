@@ -9,625 +9,304 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:        #0f0f11;
-      --surface:   #18181c;
-      --border:    #2a2a32;
-      --accent:    #7c6af7;
-      --accent-2:  #a78bfa;
-      --success:   #34d399;
-      --warn:      #fbbf24;
-      --text:      #e8e8f0;
-      --muted:     #6b6b80;
-      --danger:    #f87171;
-      --radius:    10px;
+      --bg: #0f0f11; --surface: #18181c; --border: #2a2a32;
+      --accent: #7c6af7; --accent-2: #a78bfa; --success: #34d399;
+      --warn: #fbbf24; --text: #e8e8f0; --muted: #6b6b80;
+      --danger: #f87171; --radius: 10px;
     }
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 13px; line-height: 1.5; }
+    body { display: flex; flex-direction: column; padding: 14px; gap: 10px; overflow-x: hidden; }
 
-    html, body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'DM Sans', sans-serif;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    body {
-      display: flex;
-      flex-direction: column;
-      padding: 16px;
-      gap: 12px;
-      overflow-x: hidden;
-    }
-
-    /* ── Header ── */
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .logo {
-      width: 28px; height: 28px;
+    .header { display: flex; align-items: center; gap: 8px; }
+    .logo { width: 26px; height: 26px;
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      border-radius: 7px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; flex-shrink: 0;
-    }
-    .title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
-    .subtitle { font-size: 11px; color: var(--muted); margin-left: auto; font-family: 'DM Mono', monospace; }
+      border-radius: 7px; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0; }
+    .title { font-size: 13px; font-weight: 600; letter-spacing: -0.3px; }
+    .header-actions { margin-left: auto; display: flex; gap: 6px; }
+    .icon-btn { background: transparent; border: 1px solid var(--border);
+      border-radius: 6px; color: var(--muted); font-size: 11px;
+      padding: 3px 7px; cursor: pointer; transition: color .15s, border-color .15s; }
+    .icon-btn:hover { color: var(--text); border-color: var(--text); }
 
-    /* ── Message Preview ── */
-    .msg-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-    .msg-from {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--accent-2);
-      font-family: 'DM Mono', monospace;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .msg-subject {
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .msg-preview {
-      font-size: 11px;
-      color: var(--muted);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
+    .msg-card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 9px 11px; }
+    .msg-from { font-size: 11px; font-weight: 600; color: var(--accent-2);
+      font-family: 'DM Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .msg-subject { font-size: 12px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+    .msg-preview { font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 
-    /* ── Status / Loading ── */
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--muted);
-      min-height: 20px;
-    }
-    .spinner {
-      width: 12px; height: 12px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      flex-shrink: 0;
-    }
+    .status { display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--muted); min-height: 18px; }
+    .spinner { width: 11px; height: 11px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; flex-shrink: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .dot.ai    { background: var(--accent); }
-    .dot.ok    { background: var(--success); }
-    .dot.warn  { background: var(--warn); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .dot.ok { background: var(--success); }
+    .dot.warn { background: var(--warn); }
     .dot.error { background: var(--danger); }
 
-    /* ── Section label ── */
-    .section-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      padding: 0 2px;
-    }
+    .section-label { font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
 
-    /* ── Folder suggestion cards ── */
-    .suggestions {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .folder-btn {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 12px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      cursor: pointer;
-      color: var(--text);
-      text-align: left;
-      width: 100%;
-      transition: border-color 0.15s, background 0.15s, transform 0.1s;
-      position: relative;
-      overflow: hidden;
-    }
-    .folder-btn::before {
-      content: '';
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 3px;
-      background: transparent;
-      transition: background 0.15s;
-    }
-    .folder-btn:hover {
-      border-color: var(--accent);
-      background: #1e1e28;
-      transform: translateX(2px);
-    }
+    .suggestions { display: flex; flex-direction: column; gap: 5px; }
+    .folder-btn { display: flex; align-items: center; gap: 9px; padding: 8px 11px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); cursor: pointer; color: var(--text);
+      text-align: left; width: 100%;
+      transition: border-color .15s, background .15s, transform .1s;
+      position: relative; overflow: hidden; }
+    .folder-btn::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; background: transparent; transition: background .15s; }
+    .folder-btn:hover { border-color: var(--accent); background: #1e1e28; transform: translateX(2px); }
     .folder-btn:hover::before { background: var(--accent); }
-    .folder-btn:active { transform: translateX(1px) scale(0.99); }
-
-    .folder-btn.top-pick {
-      border-color: #3d3560;
-      background: #1a1830;
-    }
+    .folder-btn:active { transform: translateX(1px) scale(.99); }
+    .folder-btn.top-pick { border-color: #3d3560; background: #1a1830; }
     .folder-btn.top-pick::before { background: var(--accent); }
-
-    .folder-icon { font-size: 15px; flex-shrink: 0; }
-
+    .folder-icon { font-size: 14px; flex-shrink: 0; }
     .folder-info { flex: 1; min-width: 0; }
-    .folder-name {
-      font-size: 12px; font-weight: 500;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .folder-path {
-      font-size: 10px; color: var(--muted);
-      font-family: 'DM Mono', monospace;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
+    .folder-name { font-size: 12px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .folder-path { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .folder-badge { font-size: 10px; font-family: 'DM Mono', monospace;
+      padding: 2px 5px; border-radius: 4px; flex-shrink: 0; }
+    .folder-badge.ai-pick { background: #2d2650; color: var(--accent-2); }
+    .folder-badge.used    { background: #1e2a20; color: var(--success); }
 
-    .folder-badge {
-      font-size: 10px;
-      font-family: 'DM Mono', monospace;
-      padding: 2px 6px;
-      border-radius: 4px;
-      flex-shrink: 0;
-    }
-    .folder-badge.ai-pick {
-      background: #2d2650;
-      color: var(--accent-2);
-    }
-    .folder-badge.used {
-      background: #1e2a20;
-      color: var(--success);
-    }
-
-    /* ── Manual search ── */
-    .search-wrap {
-      position: relative;
-    }
-    .search-icon {
-      position: absolute; left: 10px; top: 50%;
-      transform: translateY(-50%);
-      color: var(--muted); font-size: 12px; pointer-events: none;
-    }
-    .search-input {
-      width: 100%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 8px 10px 8px 30px;
-      color: var(--text);
-      font-family: 'DM Sans', sans-serif;
-      font-size: 12px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
+    .search-wrap { position: relative; }
+    .search-icon { position: absolute; left: 9px; top: 50%;
+      transform: translateY(-50%); color: var(--muted); font-size: 11px; pointer-events: none; }
+    .search-input { width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 7px 9px 7px 28px; color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 12px;
+      outline: none; transition: border-color .15s; }
     .search-input::placeholder { color: var(--muted); }
     .search-input:focus { border-color: var(--accent); }
-
-    .search-results {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-height: 160px;
-      overflow-y: auto;
-    }
+    .search-results { display: flex; flex-direction: column; gap: 4px;
+      max-height: 150px; overflow-y: auto; margin-top: 5px; }
     .search-results::-webkit-scrollbar { width: 4px; }
-    .search-results::-webkit-scrollbar-track { background: transparent; }
     .search-results::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-    /* ── Toast ── */
-    .toast {
-      position: fixed;
-      bottom: 16px; left: 16px; right: 16px;
-      background: var(--success);
-      color: #0a1a12;
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      font-size: 12px; font-weight: 600;
-      display: flex; align-items: center; gap: 8px;
-      transform: translateY(60px);
-      opacity: 0;
-      transition: transform 0.25s ease, opacity 0.25s ease;
-      z-index: 100;
-    }
+    .toast { position: fixed; bottom: 14px; left: 14px; right: 14px;
+      background: var(--success); color: #0a1a12; padding: 9px 13px;
+      border-radius: var(--radius); font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 7px;
+      transform: translateY(60px); opacity: 0;
+      transition: transform .25s, opacity .25s; z-index: 100; }
     .toast.show { transform: translateY(0); opacity: 1; }
     .toast.error { background: var(--danger); color: #1a0a0a; }
 
-    /* ── API Key setup ── */
-    .setup-panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .setup-title { font-size: 12px; font-weight: 600; }
-    .setup-desc { font-size: 11px; color: var(--muted); line-height: 1.6; }
-    .key-input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 7px 10px;
-      color: var(--text);
-      font-family: 'DM Mono', monospace;
-      font-size: 11px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .key-input:focus { border-color: var(--accent); }
-
-    .btn {
-      padding: 8px 14px;
-      border-radius: 7px;
-      border: none;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.15s, transform 0.1s;
-    }
-    .btn:active { transform: scale(0.97); }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      color: #fff;
-    }
-    .btn-ghost {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-    }
+    .panel { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px;
+      display: flex; flex-direction: column; gap: 8px; }
+    .panel-title { font-size: 12px; font-weight: 600; }
+    .panel-desc { font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .text-input { width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px;
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 11px;
+      outline: none; transition: border-color .15s; }
+    .text-input:focus { border-color: var(--accent); }
+    textarea.text-input { resize: vertical; min-height: 90px; line-height: 1.7; }
+    .btn { padding: 7px 13px; border-radius: 7px; border: none;
+      font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s, transform .1s; }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
     .btn-ghost:hover { border-color: var(--text); color: var(--text); }
-    .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+    .btn-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-    .divider {
-      border: none;
-      border-top: 1px solid var(--border);
-    }
-
-    /* hide/show helpers */
+    .divider { border: none; border-top: 1px solid var(--border); }
     .hidden { display: none !important; }
+
+    .confirm-bar { background: #1a1830; border: 1px solid #3d3560;
+      border-radius: var(--radius); padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 8px; }
+    .confirm-bar-title { font-size: 11px; color: var(--muted); }
+    .confirm-bar-folder { font-size: 13px; font-weight: 600; }
+    .confirm-bar-note { font-size: 10px; color: var(--muted); line-height: 1.5; }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <div class="header">
     <div class="logo">📂</div>
     <span class="title">SmartFiler</span>
-    <span class="subtitle" id="modelBadge">claude · ai</span>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="showView('folders')" title="Edit folder list">⚙ folders</button>
+      <button class="icon-btn" onclick="showView('apikey')"  title="Change API key">🔑</button>
+    </div>
   </div>
 
-  <!-- API Key Setup Panel (shown when no key stored) -->
-  <div class="setup-panel" id="setupPanel">
-    <div class="setup-title">🔑 Enter your Anthropic API Key</div>
-    <div class="setup-desc">
-      Your key is stored only in your browser (localStorage) and never sent anywhere except directly to Anthropic's API.
-      Get a key at <strong>console.anthropic.com</strong>.
-    </div>
-    <input class="key-input" type="password" id="apiKeyInput" placeholder="sk-ant-..."/>
+  <!-- Step 1: API Key -->
+  <div id="view-apikey" class="panel">
+    <div class="panel-title">🔑 Anthropic API Key</div>
+    <div class="panel-desc">Stored only in your browser. Get a key at <strong>console.anthropic.com</strong>.</div>
+    <input class="text-input" type="password" id="apiKeyInput" placeholder="sk-ant-api03-…"/>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="saveApiKey()">Save &amp; Continue</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">Save &amp; Continue →</button>
     </div>
   </div>
 
-  <!-- Main Filing UI (shown after key is set) -->
-  <div id="mainUI" class="hidden">
+  <!-- Step 2: Folder list -->
+  <div id="view-folders" class="panel hidden">
+    <div class="panel-title">📁 Your folder list</div>
+    <div class="panel-desc">
+      One folder per line. Use <code style="color:var(--accent-2)">Archive / SubFolder</code> for subfolders.
+      This is saved in your browser — you only need to do this once.
+    </div>
+    <textarea class="text-input" id="folderListInput"
+      placeholder="Inbox&#10;Archive&#10;Archive / ProjectAlpha&#10;Archive / Finance&#10;Archive / HR&#10;Projects&#10;Clients&#10;Newsletter"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="cancelFolders()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveFolders()">Save folders →</button>
+    </div>
+  </div>
 
-    <!-- Message Preview -->
-    <div class="msg-card" id="msgCard">
-      <div class="msg-from" id="msgFrom">Loading…</div>
+  <!-- Main UI -->
+  <div id="view-main" class="hidden">
+    <div class="msg-card">
+      <div class="msg-from"    id="msgFrom">Loading…</div>
       <div class="msg-subject" id="msgSubject"></div>
       <div class="msg-preview" id="msgPreview"></div>
     </div>
-
-    <!-- Status line -->
     <div class="status" id="statusLine">
-      <div class="spinner" id="statusSpinner"></div>
+      <div class="spinner"></div>
       <span id="statusText">Reading message…</span>
     </div>
-    <div id="debugOut" style="display:none;font-family:'DM Mono',monospace;font-size:10px;color:var(--warn);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>
-    <button id="debugBtn" onclick="toggleDebug()" style="display:none;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:3px 8px;cursor:pointer;align-self:flex-end;">show debug</button>
-
-    <!-- AI Suggestions -->
     <div id="suggestionsSection" class="hidden">
-      <div class="section-label" style="margin-bottom:6px">AI suggestions</div>
+      <div class="section-label">AI suggestions</div>
       <div class="suggestions" id="suggestionsList"></div>
     </div>
-
     <hr class="divider" id="divider" style="display:none"/>
-
-    <!-- Manual Search -->
     <div id="searchSection" class="hidden">
-      <div class="section-label" style="margin-bottom:6px">All folders</div>
+      <div class="section-label">All folders</div>
       <div class="search-wrap">
         <span class="search-icon">🔍</span>
-        <input class="search-input" id="searchInput" type="text" placeholder="Type to filter folders…"/>
+        <input class="search-input" id="searchInput" type="text" placeholder="Type to filter…"/>
       </div>
-      <div class="search-results" id="searchResults" style="margin-top:6px"></div>
+      <div class="search-results" id="searchResults"></div>
     </div>
-
   </div>
 
-  <!-- Toast notification -->
-  <div class="toast" id="toast">✓ <span id="toastMsg">Filed!</span></div>
+  <!-- Confirm move -->
+  <div id="view-confirm" class="hidden">
+    <div class="confirm-bar">
+      <div class="confirm-bar-title">Move this message to:</div>
+      <div class="confirm-bar-folder" id="confirmFolderName"></div>
+      <div class="confirm-bar-note"   id="confirmNote"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost"   onclick="cancelMove()">Cancel</button>
+        <button class="btn btn-primary" id="confirmMoveBtn">Move ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">✓ <span id="toastMsg"></span></div>
 
   <script>
-  // ── Constants ──────────────────────────────────────────────────────────────
-  const STORAGE_KEY_APIKEY  = 'sf_apikey';
-  const STORAGE_KEY_HISTORY = 'sf_history';
-  const MODEL = 'claude-sonnet-4-20250514';
-  const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+  const KEY_APIKEY  = 'sf_apikey';
+  const KEY_FOLDERS = 'sf_folders';
+  const KEY_HISTORY = 'sf_history';
+  const MODEL       = 'claude-sonnet-4-20250514';
 
-  // ── State ──────────────────────────────────────────────────────────────────
   let allFolders     = [];
   let currentMessage = null;
-  let graphToken     = null;
+  let pendingFolder  = null;
 
-  // ── Init ───────────────────────────────────────────────────────────────────
+  // ── Boot ──────────────────────────────────────────────────────────────────
   Office.onReady(info => {
-    if (info.host === Office.HostType.Outlook) {
-      const key = localStorage.getItem(STORAGE_KEY_APIKEY);
-      if (key) {
-        showMain();
-        loadMessageAndSuggest();
-      }
-    }
+    if (info.host !== Office.HostType.Outlook) return;
+    const hasKey     = !!localStorage.getItem(KEY_APIKEY);
+    const hasFolders = !!localStorage.getItem(KEY_FOLDERS);
+    if (!hasKey)          { showView('apikey');   return; }
+    if (!hasFolders)      { showView('folders');  return; }
+    loadFoldersFromStorage();
+    showView('main');
+    loadMessage();
   });
 
-  // ── API Key management ─────────────────────────────────────────────────────
+  // ── Views ─────────────────────────────────────────────────────────────────
+  function showView(name) {
+    ['apikey','folders','main','confirm'].forEach(v =>
+      document.getElementById(`view-${v}`).classList.toggle('hidden', v !== name));
+  }
+
+  // ── API Key ───────────────────────────────────────────────────────────────
   function saveApiKey() {
     const val = document.getElementById('apiKeyInput').value.trim();
-    if (!val.startsWith('sk-ant-')) {
-      showToast('Key should start with sk-ant-', true);
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY_APIKEY, val);
-    showMain();
-    loadMessageAndSuggest();
+    if (!val.startsWith('sk-ant-')) { showToast('Key must start with sk-ant-', true); return; }
+    localStorage.setItem(KEY_APIKEY, val);
+    if (!localStorage.getItem(KEY_FOLDERS)) { showView('folders'); return; }
+    loadFoldersFromStorage();
+    showView('main');
+    loadMessage();
   }
 
-  function showMain() {
-    document.getElementById('setupPanel').classList.add('hidden');
-    document.getElementById('mainUI').classList.remove('hidden');
+  // ── Folders ───────────────────────────────────────────────────────────────
+  function saveFolders() {
+    const raw = document.getElementById('folderListInput').value.trim();
+    if (!raw) { showToast('Enter at least one folder', true); return; }
+    localStorage.setItem(KEY_FOLDERS, raw);
+    loadFoldersFromStorage();
+    showView('main');
+    if (currentMessage) callAI(); else loadMessage();
   }
 
-  function loadMessageAndSuggest() {
-    setStatus('loading', 'Reading message…');
-    showDebugBtn();
-    dbg(`restUrl: ${Office.context.mailbox.restUrl}`);
-    dbg(`host: ${Office.context.host}`);
-
-    // Skip REST token — go straight to reading message then EWS for folders
-    // (REST token requires Azure AD app registration for sideloaded add-ins)
-    readMessageMeta(null);
+  function cancelFolders() {
+    if (localStorage.getItem(KEY_FOLDERS)) showView('main'); else showView('apikey');
   }
 
-  // ── Step 2: Read message metadata ─────────────────────────────────────────
-  function readMessageMeta(token) {
+  function loadFoldersFromStorage() {
+    const raw = localStorage.getItem(KEY_FOLDERS) || '';
+    allFolders = raw.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+      const parts = line.split('/').map(p => p.trim());
+      return { name: parts[parts.length - 1], path: line };
+    });
+    document.getElementById('folderListInput').value = raw;
+    setupSearch();
+  }
+
+  // ── Load message ──────────────────────────────────────────────────────────
+  function loadMessage() {
     const item = Office.context.mailbox.item;
     if (!item) { setStatus('warn', 'No message selected.'); return; }
-
     const senderEmail = item.from?.emailAddress || 'unknown';
     const senderName  = item.from?.displayName  || senderEmail;
     const subject     = item.subject || '(no subject)';
-
-    currentMessage = { senderEmail, senderName, subject };
+    currentMessage    = { senderEmail, senderName, subject };
     document.getElementById('msgFrom').textContent    = `${senderName} <${senderEmail}>`;
     document.getElementById('msgSubject').textContent = subject;
-
     item.body.getAsync(Office.CoercionType.Text, {}, result => {
       if (result.status === Office.AsyncResultStatus.Succeeded) {
         const preview = result.value.trim().substring(0, 200).replace(/\s+/g, ' ');
-        document.getElementById('msgPreview').textContent = preview || '';
+        document.getElementById('msgPreview').textContent = preview;
         currentMessage.bodyPreview = preview;
       }
-      loadFolders(token);
+      callAI();
     });
   }
 
-  // ── Debug helpers ──────────────────────────────────────────────────────────
-  const debugLines = [];
-  function dbg(msg) {
-    const line = `[${new Date().toISOString().slice(11,23)}] ${msg}`;
-    debugLines.push(line);
-    console.log(line);
-    const el = document.getElementById('debugOut');
-    if (el) el.textContent = debugLines.slice(-40).join('\n');
-  }
-  function toggleDebug() {
-    const el  = document.getElementById('debugOut');
-    const btn = document.getElementById('debugBtn');
-    if (el.style.display === 'none') { el.style.display = ''; btn.textContent = 'hide debug'; }
-    else { el.style.display = 'none'; btn.textContent = 'show debug'; }
-  }
-  function showDebugBtn() {
-    document.getElementById('debugBtn').style.display = 'block';
-  }
-
-  // ── Step 3: Load folders via Exchange REST (with EWS fallback) ───────────
-  async function loadFolders(token) {
-    setStatus('loading', 'Loading folders via EWS…');
-    tryEWSFolders();
-  }
-
-  // ── EWS: fetch all folders ─────────────────────────────────────────────────
-  function tryEWSFolders() {
-    dbg('starting EWS folder fetch');
-
-    // Check makeEwsRequestAsync is available
-    if (typeof Office.context.mailbox.makeEwsRequestAsync !== 'function') {
-      dbg('makeEwsRequestAsync not available');
-      useFallbackFolders('EWS not available in this client');
-      return;
+  // ── AI ────────────────────────────────────────────────────────────────────
+  async function callAI() {
+    if (!allFolders.length) {
+      setStatus('warn', 'No folders saved — click ⚙ folders to add them.'); return;
     }
-
-    const soap = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
-               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/></soap:Header>
-  <soap:Body>
-    <m:FindFolder Traversal="Deep">
-      <m:FolderShape><t:BaseShape>IdOnly</t:BaseShape>
-        <t:AdditionalProperties>
-          <t:FieldURI FieldURI="folder:DisplayName"/>
-          <t:FieldURI FieldURI="folder:ChildFolderCount"/>
-          <t:FieldURI FieldURI="folder:FolderClass"/>
-        </t:AdditionalProperties>
-      </m:FolderShape>
-      <m:ParentFolderIds>
-        <t:DistinguishedFolderId Id="msgfolderroot"/>
-      </m:ParentFolderIds>
-    </m:FindFolder>
-  </soap:Body>
-</soap:Envelope>`;
-
-    let responded = false;
-    const timer = setTimeout(() => {
-      if (!responded) {
-        responded = true;
-        dbg('EWS timed out after 12s');
-        useFallbackFolders('EWS timed out');
-      }
-    }, 12000);
-
-    try {
-      dbg('calling makeEwsRequestAsync…');
-      Office.context.mailbox.makeEwsRequestAsync(soap, result => {
-        if (responded) return;
-        responded = true;
-        clearTimeout(timer);
-
-        dbg(`EWS callback status: ${result.status}`);
-
-        if (result.status !== Office.AsyncResultStatus.Succeeded) {
-          dbg(`EWS error: ${JSON.stringify(result.error)}`);
-          useFallbackFolders(`EWS error: ${result.error?.message || result.status}`);
-          return;
-        }
-
-        dbg(`EWS response length: ${result.value ? result.value.length : 0}`);
-
-        try {
-          const parser  = new DOMParser();
-          const xml     = parser.parseFromString(result.value, 'text/xml');
-          const NS      = 'http://schemas.microsoft.com/exchange/services/2006/types';
-          const nodes   = Array.from(xml.getElementsByTagNameNS(NS, 'Folder'));
-          dbg(`EWS folder nodes found: ${nodes.length}`);
-
-          const SKIP = new Set(['Sync Issues','Conflicts','Server Failures',
-            'Local Failures','Conversation History','Quick Step Settings',
-            'Recoverable Items','Purges','Versions','Audits','Junk Email',
-            'Outbox','Drafts','Deleted Items','Sent Items','RSS Feeds',
-            'Notes','Tasks','Calendar','Contacts','People I Know',
-            'Clutter','Conversation Action Settings']);
-
-          const folders = [];
-          for (const f of nodes) {
-            const idEl   = f.getElementsByTagNameNS(NS, 'FolderId')[0];
-            const nameEl = f.getElementsByTagNameNS(NS, 'DisplayName')[0];
-            const clsEl  = f.getElementsByTagNameNS(NS, 'FolderClass')[0];
-            if (!idEl || !nameEl) continue;
-            const name = nameEl.textContent.trim();
-            const cls  = clsEl ? clsEl.textContent.trim() : '';
-            // Only mail folders (IPF.Note) or unset class
-            if (cls && cls !== 'IPF.Note') continue;
-            if (SKIP.has(name) || !name) continue;
-            folders.push({ id: idEl.getAttribute('Id'), name, path: name });
-          }
-
-          dbg(`folders after filter: ${folders.length}`);
-
-          if (!folders.length) {
-            // Try without class filter — maybe all classes are blank
-            dbg('retry without class filter');
-            for (const f of nodes) {
-              const idEl   = f.getElementsByTagNameNS(NS, 'FolderId')[0];
-              const nameEl = f.getElementsByTagNameNS(NS, 'DisplayName')[0];
-              if (!idEl || !nameEl) continue;
-              const name = nameEl.textContent.trim();
-              if (SKIP.has(name) || !name) continue;
-              if (!folders.find(x => x.name === name)) {
-                folders.push({ id: idEl.getAttribute('Id'), name, path: name });
-              }
-            }
-            dbg(`folders after retry: ${folders.length}`);
-          }
-
-          if (!folders.length) {
-            useFallbackFolders('EWS returned 0 usable folders');
-            return;
-          }
-
-          allFolders = folders;
-          setupSearch(folders);
-          callAIForSuggestions();
-
-        } catch(parseErr) {
-          dbg(`EWS parse error: ${parseErr.message}`);
-          useFallbackFolders('EWS parse failed');
-        }
-      });
-    } catch(e) {
-      clearTimeout(timer);
-      responded = true;
-      dbg(`EWS exception: ${e.message}`);
-      useFallbackFolders(`EWS exception: ${e.message}`);
-    }
-  }
-
-  // ── Static fallback folder list ────────────────────────────────────────────
-  function useFallbackFolders(reason) {
-    console.warn('Using fallback folders. Reason:', reason);
-    const fallback = [
-      { id: 'inbox',        name: 'Inbox',        path: 'Inbox' },
-      { id: 'archive',      name: 'Archive',       path: 'Archive' },
-      { id: 'sentitems',    name: 'Sent Items',    path: 'Sent Items' },
-      { id: 'deleteditems', name: 'Deleted Items', path: 'Deleted Items' },
-      { id: 'junkemail',    name: 'Junk Email',    path: 'Junk Email' },
-    ];
-    allFolders = fallback;
-    setStatus('warn', `Limited folders (${reason}). Add folders manually below.`);
-    setupSearch(fallback);
-    // Still try AI with what we have
-    callAIForSuggestions();
-  }
-
-  // ── Call Claude API for folder suggestions ─────────────────────────────────
-  async function callAIForSuggestions() {
     setStatus('loading', 'Asking AI for suggestions…');
-    const apiKey = localStorage.getItem(STORAGE_KEY_APIKEY);
-    if (!apiKey) return;
-
-    const history      = getHistory();
-    const senderHist   = history[currentMessage.senderEmail] || {};
-    const topPrior     = Object.entries(senderHist)
-      .sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([p, c]) => `"${p}" (×${c})`).join(', ') || 'none';
-    const folderList   = allFolders.map(f => f.name).slice(0, 100).join(', ');
-
-    const prompt = `You are an email filing assistant. Suggest the best Outlook folders to file this email.
+    const apiKey     = localStorage.getItem(KEY_APIKEY);
+    const senderHist = (getHistory()[currentMessage.senderEmail] || {});
+    const topPrior   = Object.entries(senderHist).sort((a,b)=>b[1]-a[1]).slice(0,5)
+      .map(([p,c])=>`"${p}" (×${c})`).join(', ') || 'none';
+    const folderList = allFolders.map(f => f.path).join(', ');
+    const prompt =
+`You are an email filing assistant. Suggest the best folders for this email.
 
 Email:
 - From: ${currentMessage.senderName} <${currentMessage.senderEmail}>
@@ -637,99 +316,78 @@ Email:
 Available folders: ${folderList}
 Filing history for this sender: ${topPrior}
 
-Return ONLY a JSON array of up to 4 folder names (from the available list), best match first.
-Example: ["Projects","Finance","Inbox"]
+Return ONLY a JSON array of up to 4 folder paths from the available list, best match first.
+Example: ["Archive / Finance","Archive / ProjectAlpha","Clients"]
 No explanation, no markdown fences.`;
 
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Content-Type':      'application/json',
-          'x-api-key':         apiKey,
+          'Content-Type': 'application/json', 'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true'
         },
-        body: JSON.stringify({
-          model: MODEL, max_tokens: 200,
-          messages: [{ role: 'user', content: prompt }]
-        })
+        body: JSON.stringify({ model: MODEL, max_tokens: 200,
+          messages: [{ role: 'user', content: prompt }] })
       });
-
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
+        const err = await resp.json().catch(()=>({}));
         throw new Error(err.error?.message || `HTTP ${resp.status}`);
       }
-
       const data  = await resp.json();
-      const text  = data.content[0].text.trim().replace(/```json|```/g, '').trim();
-      const names = JSON.parse(text);
-
-      const suggestions = names
-        .map(n => allFolders.find(f => f.name.toLowerCase() === n.toLowerCase()))
+      const text  = data.content[0].text.trim().replace(/```json|```/g,'').trim();
+      const paths = JSON.parse(text);
+      const suggestions = paths
+        .map(p => allFolders.find(f => f.path.toLowerCase() === p.toLowerCase()))
         .filter(Boolean).slice(0, 4);
-
       renderSuggestions(suggestions);
-      setStatus('ok', `AI ready · ${allFolders.length} folders loaded`);
-
+      setStatus('ok', `${allFolders.length} folders · AI ready`);
     } catch(e) {
-      console.error('AI error:', e);
-      setStatus('error', 'AI error: ' + e.message);
-      // Show search anyway
+      setStatus('error', 'AI: ' + e.message);
       document.getElementById('divider').style.display = '';
       document.getElementById('searchSection').classList.remove('hidden');
     }
   }
 
-  // ── Render suggestion buttons ──────────────────────────────────────────────
+  // ── Render suggestions ────────────────────────────────────────────────────
   function renderSuggestions(suggestions) {
-    const list = document.getElementById('suggestionsList');
-    list.innerHTML = '';
-
+    const list       = document.getElementById('suggestionsList');
+    const senderHist = (getHistory()[currentMessage?.senderEmail] || {});
+    list.innerHTML   = '';
     if (!suggestions.length) {
-      setStatus('warn', 'No matching folders — use search below.');
       document.getElementById('divider').style.display = '';
       document.getElementById('searchSection').classList.remove('hidden');
       return;
     }
-
-    const senderHist = (getHistory()[currentMessage.senderEmail] || {});
-
     suggestions.forEach((folder, i) => {
-      const btn = document.createElement('button');
+      const btn   = document.createElement('button');
       btn.className = 'folder-btn' + (i === 0 ? ' top-pick' : '');
-      const used = senderHist[folder.name] || 0;
+      const used  = senderHist[folder.path] || 0;
       const badge = i === 0
         ? `<span class="folder-badge ai-pick">AI pick</span>`
         : used > 0 ? `<span class="folder-badge used">×${used}</span>` : '';
-
       btn.innerHTML = `
         <span class="folder-icon">${getFolderIcon(folder.name)}</span>
         <div class="folder-info">
           <div class="folder-name">${escHtml(folder.name)}</div>
-          ${folder.path !== folder.name
-            ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+          ${folder.path.includes('/') ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
         </div>${badge}`;
-      btn.onclick = () => moveToFolder(folder);
+      btn.onclick = () => selectFolder(folder);
       list.appendChild(btn);
     });
-
     document.getElementById('suggestionsSection').classList.remove('hidden');
     document.getElementById('divider').style.display = '';
     document.getElementById('searchSection').classList.remove('hidden');
   }
 
-  // ── Search / filter ────────────────────────────────────────────────────────
-  function setupSearch(folders) {
+  // ── Search ────────────────────────────────────────────────────────────────
+  function setupSearch() {
     const input   = document.getElementById('searchInput');
     const results = document.getElementById('searchResults');
-
     function render(q) {
       q = q.toLowerCase().trim();
-      const list = q
-        ? folders.filter(f => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
-        : folders;
-
+      const list = q ? allFolders.filter(f => f.path.toLowerCase().includes(q)) : allFolders;
       results.innerHTML = '';
       list.slice(0, 30).forEach(folder => {
         const btn = document.createElement('button');
@@ -738,121 +396,163 @@ No explanation, no markdown fences.`;
           <span class="folder-icon">${getFolderIcon(folder.name)}</span>
           <div class="folder-info">
             <div class="folder-name">${escHtml(folder.name)}</div>
-            ${folder.path !== folder.name
-              ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
+            ${folder.path.includes('/') ? `<div class="folder-path">${escHtml(folder.path)}</div>` : ''}
           </div>`;
-        btn.onclick = () => moveToFolder(folder);
+        btn.onclick = () => selectFolder(folder);
         results.appendChild(btn);
       });
-
       if (!list.length)
-        results.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px 4px">No folders match.</div>';
+        results.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:6px 4px">No folders match.</div>';
     }
-
     input.addEventListener('input', e => render(e.target.value));
     render('');
   }
 
-  // ── Move message ───────────────────────────────────────────────────────────
-  function moveToFolder(folder) {
-    recordHistory(currentMessage.senderEmail, folder.name);
-    dbg(`moving to: ${folder.name} (id: ${folder.id ? folder.id.slice(0,20) : 'none'}…)`);
-    moveViaEWS(folder);
-  }
-
-  async function moveViaGraph(folder) {
-    setStatus('loading', `Moving to ${folder.name}…`);
-    try {
-      const BASE = Office.context.mailbox.restUrl || 'https://outlook.office.com/api/v2.0';
-
-      const restId = Office.context.mailbox.convertToRestId(
-        Office.context.mailbox.item.itemId,
-        Office.MailboxEnums.RestVersion.v2_0
-      );
-
-      const resp = await fetch(`${BASE}/me/messages/${restId}/move`, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + graphToken,
-          'Content-Type':  'application/json'
-        },
-        body: JSON.stringify({ DestinationId: folder.id })
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error((err.error?.message) || `HTTP ${resp.status}`);
-      }
-
-      showToast(`✓ Moved to ${folder.name}`);
-      setTimeout(() => window.close(), 1400);
-
-    } catch(e) {
-      console.error('REST move failed:', e);
-      moveViaEWS(folder);
+  // ── Select folder ─────────────────────────────────────────────────────────
+  function selectFolder(folder) {
+    pendingFolder = folder;
+    document.getElementById('confirmFolderName').textContent = folder.path;
+    const ewsAvail = typeof Office.context.mailbox.makeEwsRequestAsync === 'function';
+    if (ewsAvail) {
+      document.getElementById('confirmNote').textContent = 'SmartFiler will move this message via EWS.';
+      document.getElementById('confirmMoveBtn').textContent = 'Move ✓';
+      document.getElementById('confirmMoveBtn').onclick = doEWSMove;
+    } else {
+      document.getElementById('confirmNote').textContent =
+        'EWS unavailable. Right-click the message → Move → ' + folder.path + ' to file manually. Click Record to save to history.';
+      document.getElementById('confirmMoveBtn').textContent = 'Record only';
+      document.getElementById('confirmMoveBtn').onclick = doRecordOnly;
     }
+    showView('confirm');
   }
 
-  function moveViaEWS(folder) {
+  function cancelMove() { pendingFolder = null; showView('main'); }
+
+  // ── EWS: FindFolder by name, then MoveItem ────────────────────────────────
+  function doEWSMove() {
+    if (!pendingFolder) return;
+    const folder = pendingFolder;
     const itemId = Office.context.mailbox.item.itemId;
-    const isDistinguished = ['inbox','sentitems','deleteditems','archive','junkemail'].includes(folder.id);
+    setStatus('loading', `Finding "${folder.name}"…`);
+    showView('main');
 
-    const toFolderXml = isDistinguished
-      ? `<t:DistinguishedFolderId Id="${escAttr(folder.id)}"/>`
-      : `<t:FolderId Id="${escAttr(folder.id)}"/>`;
-
-    const soap = `<?xml version="1.0" encoding="utf-8"?>
+    const findSoap = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header><t:RequestServerVersion Version="Exchange2013"/></soap:Header>
+  <soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/></soap:Header>
+  <soap:Body>
+    <m:FindFolder Traversal="Deep">
+      <m:FolderShape>
+        <t:BaseShape>IdOnly</t:BaseShape>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="folder:DisplayName"/>
+        </t:AdditionalProperties>
+      </m:FolderShape>
+      <m:Restriction>
+        <t:IsEqualTo>
+          <t:FieldURI FieldURI="folder:DisplayName"/>
+          <t:FieldURIOrConstant><t:Constant Value="${escAttr(folder.name)}"/></t:FieldURIOrConstant>
+        </t:IsEqualTo>
+      </m:Restriction>
+      <m:ParentFolderIds>
+        <t:DistinguishedFolderId Id="msgfolderroot"/>
+        <t:DistinguishedFolderId Id="archivemsgfolderroot"/>
+      </m:ParentFolderIds>
+    </m:FindFolder>
+  </soap:Body>
+</soap:Envelope>`;
+
+    Office.context.mailbox.makeEwsRequestAsync(findSoap, findResult => {
+      if (findResult.status !== Office.AsyncResultStatus.Succeeded) {
+        const code = findResult.error?.code;
+        if (code === 9020 || code === 9021) {
+          // EWS blocked org-wide — switch to record-only mode permanently
+          setStatus('warn', 'EWS blocked by your org (code ' + code + '). Recording choice only.');
+          recordHistory(currentMessage.senderEmail, folder.path);
+          showToast('✓ Recorded (move manually: right-click → Move)');
+        } else {
+          setStatus('error', 'EWS error: ' + (findResult.error?.message || findResult.status));
+        }
+        return;
+      }
+
+      const parser      = new DOMParser();
+      const xml         = parser.parseFromString(findResult.value, 'text/xml');
+      const NS          = 'http://schemas.microsoft.com/exchange/services/2006/types';
+      const folderNodes = Array.from(xml.getElementsByTagNameNS(NS, 'Folder'));
+
+      if (!folderNodes.length) {
+        setStatus('warn', `"${folder.name}" not found. Check the name matches exactly.`);
+        return;
+      }
+
+      // If multiple folders share the same name, prefer one whose parent path
+      // matches the configured path (best-effort — take first match for now)
+      const idEl = folderNodes[0].getElementsByTagNameNS(NS, 'FolderId')[0];
+      if (!idEl) { setStatus('error', 'Could not read folder ID.'); return; }
+      const targetId = idEl.getAttribute('Id');
+
+      const moveSoap = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/></soap:Header>
   <soap:Body>
     <m:MoveItem>
-      <m:ToFolderId>${toFolderXml}</m:ToFolderId>
+      <m:ToFolderId><t:FolderId Id="${escAttr(targetId)}"/></m:ToFolderId>
       <m:ItemIds><t:ItemId Id="${escAttr(itemId)}"/></m:ItemIds>
     </m:MoveItem>
   </soap:Body>
 </soap:Envelope>`;
 
-    Office.context.mailbox.makeEwsRequestAsync(soap, result => {
-      if (result.status === Office.AsyncResultStatus.Succeeded) {
-        showToast(`✓ Moved to ${folder.name}`);
-        setTimeout(() => window.close(), 1400);
-      } else {
-        setStatus('error', 'Move failed: ' + (result.error?.message || 'unknown'));
-        showToast('Move failed — ' + (result.error?.message || 'unknown'), true);
-      }
+      Office.context.mailbox.makeEwsRequestAsync(moveSoap, moveResult => {
+        if (moveResult.status === Office.AsyncResultStatus.Succeeded) {
+          recordHistory(currentMessage.senderEmail, folder.path);
+          setStatus('ok', `Moved to ${folder.path}`);
+          showToast(`✓ Moved to ${folder.name}`);
+        } else {
+          setStatus('error', 'Move failed: ' + (moveResult.error?.message || moveResult.status));
+          showToast('Move failed', true);
+        }
+      });
     });
   }
 
-  // ── History ────────────────────────────────────────────────────────────────
-  function getHistory() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '{}'); }
-    catch { return {}; }
+  function doRecordOnly() {
+    if (!pendingFolder) return;
+    recordHistory(currentMessage.senderEmail, pendingFolder.path);
+    showToast(`✓ Recorded → ${pendingFolder.name}`);
+    pendingFolder = null;
+    showView('main');
   }
 
-  function recordHistory(senderEmail, folderName) {
+  // ── History ───────────────────────────────────────────────────────────────
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(KEY_HISTORY) || '{}'); } catch { return {}; }
+  }
+  function recordHistory(senderEmail, folderPath) {
+    if (!senderEmail || !folderPath) return;
     const h = getHistory();
     if (!h[senderEmail]) h[senderEmail] = {};
-    h[senderEmail][folderName] = (h[senderEmail][folderName] || 0) + 1;
-    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(h));
+    h[senderEmail][folderPath] = (h[senderEmail][folderPath] || 0) + 1;
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(h));
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function setStatus(type, text) {
     const line = document.getElementById('statusLine');
     line.innerHTML = '';
     if (type === 'loading') {
-      const s = document.createElement('div'); s.className = 'spinner';
-      line.appendChild(s);
+      const s = document.createElement('div'); s.className = 'spinner'; line.appendChild(s);
     } else {
       const d = document.createElement('div');
-      d.className = `dot ${type === 'ok' ? 'ok' : type === 'warn' ? 'warn' : 'error'}`;
+      d.className = `dot ${type==='ok'?'ok':type==='warn'?'warn':'error'}`;
       line.appendChild(d);
     }
-    const t = document.createElement('span'); t.textContent = text;
-    line.appendChild(t);
+    const t = document.createElement('span'); t.textContent = text; line.appendChild(t);
   }
 
   function showToast(msg, isError = false) {
@@ -864,28 +564,28 @@ No explanation, no markdown fences.`;
   }
 
   function getFolderIcon(name) {
-    const n = name.toLowerCase();
-    if (n.includes('inbox'))    return '📥';
-    if (n.includes('sent'))     return '📤';
-    if (n.includes('draft'))    return '📝';
-    if (n.includes('trash') || n.includes('deleted')) return '🗑️';
-    if (n.includes('junk') || n.includes('spam'))     return '🚫';
-    if (n.includes('archive'))  return '🗄️';
-    if (n.includes('project'))  return '🗂️';
-    if (n.includes('finance') || n.includes('invoice') || n.includes('billing')) return '💰';
-    if (n.includes('hr') || n.includes('people'))     return '👥';
-    if (n.includes('legal'))    return '⚖️';
-    if (n.includes('report'))   return '📊';
-    if (n.includes('meeting') || n.includes('calendar')) return '📅';
+    const n = (name||'').toLowerCase();
+    if (n.includes('inbox'))   return '📥';
+    if (n.includes('sent'))    return '📤';
+    if (n.includes('draft'))   return '📝';
+    if (n.includes('trash')||n.includes('deleted')) return '🗑️';
+    if (n.includes('junk')||n.includes('spam'))     return '🚫';
+    if (n.includes('archive')) return '🗄️';
+    if (n.includes('project')) return '🗂️';
+    if (n.includes('finance')||n.includes('invoice')||n.includes('billing')) return '💰';
+    if (n.includes('hr')||n.includes('people')) return '👥';
+    if (n.includes('legal'))   return '⚖️';
+    if (n.includes('report'))  return '📊';
+    if (n.includes('meeting')||n.includes('calendar')) return '📅';
+    if (n.includes('client'))  return '🤝';
     return '📁';
   }
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-
   function escAttr(s) {
-    return String(s || '').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
   </script>
 </body>
